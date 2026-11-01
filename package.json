@@ -1,0 +1,22 @@
+{
+  "name": "buffed-github",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Buffs for GitHub: small improvements to its interface.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run build && web-ext lint --source-dir dist",
+    "start": "web-ext run --source-dir dist --firefox /Applications/Zen.app/Contents/MacOS/zen",
+    "sign": "npm run typecheck && npm run build && web-ext sign --source-dir dist --channel unlisted",
+    "source-zip": "mkdir -p web-ext-artifacts && git archive --format zip --output web-ext-artifacts/source.zip HEAD"
+  },
+  "devDependencies": {
+    "@types/firefox-webext-browser": "^143.0.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "web-ext": "^10.8.0"
+  }
+}

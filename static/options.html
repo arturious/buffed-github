@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font: 13px/1.5 system-ui, sans-serif;
+        margin: 12px;
+        min-width: 320px;
+      }
+      label {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 8px;
+        padding: 6px 0;
+      }
+      label + label {
+        border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+      }
+      input {
+        grid-row: span 2;
+        margin-top: 3px;
+      }
+      small {
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="features"></div>
+    <script src="options.js"></script>
+  </body>
+</html>
