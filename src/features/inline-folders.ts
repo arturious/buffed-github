@@ -299,10 +299,8 @@ const feature: Feature = {
   id: "inline-folders",
   name: "Inline folders",
   description: "Expand folders right in the file table instead of opening them.",
+  css: CSS,
   run() {
-    const style = document.createElement("style");
-    style.textContent = CSS;
-    document.head.append(style);
     document.addEventListener("click", onClick, true);
     document.addEventListener("mouseover", onHover, { passive: true });
   },

@@ -7,8 +7,10 @@ export interface Feature {
   /** Shown on the options page. */
   name: string;
   description: string;
-  /** Called once per GitHub page load, if the feature is on. */
-  run(): void;
+  /** Styles, added as the page starts loading so nothing flashes unstyled. */
+  css?: string;
+  /** Called once per GitHub page load, once the page's HTML is parsed. */
+  run?(): void;
 }
 
 // Every feature is on unless switched off on the options page.

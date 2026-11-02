@@ -21,6 +21,8 @@ const options = {
   format: "iife",
   target: "firefox142",
   minify: false,
+  // feature styles: `import css from "./x.css"` gives the file as a string
+  loader: { ".css": "text" },
   logLevel: "info",
 };
 
