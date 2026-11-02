@@ -1,4 +1,4 @@
-# <img src="media/logo.svg" alt="" height="56" align="absmiddle">   Buffed GitHub
+# <img src="media/logo.svg" alt="" height="56" align="absmiddle">&nbsp;&nbsp;Buffed GitHub
 
 Buffs for GitHub: small improvements to its interface.
 
