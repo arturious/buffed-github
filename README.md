@@ -1,4 +1,4 @@
-# <img src="static/icons/icon.svg" alt="" height="32"> Buffed GitHub
+# <img src="static/icons/icon.svg" alt="" height="56"> Buffed GitHub
 
 Buffs for GitHub: small improvements to its interface, as a Firefox / Zen
 extension.
