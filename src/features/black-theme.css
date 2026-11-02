@@ -1,0 +1,214 @@
+/* Pure black instead of GitHub's dark gray, with flatter borders. Dark mode
+   only: light mode, and "auto" while the system is light, stay untouched. */
+
+[data-color-mode="dark"],
+[data-color-mode="auto"][data-dark-theme*="dark"],
+[data-dark-theme*="dark"] {
+  /* --- Core backgrounds --- */
+  --bgColor-default: #000000 !important;
+  --bgColor-inset: #000000 !important;
+  --color-canvas-default: #000000 !important;
+  --color-canvas-inset: #000000 !important;
+  --canvas-default: #000000 !important;
+  --canvas-inset: #000000 !important;
+  --bgColor-white: #000000 !important;
+  --home-screen-bg: #000000 !important;
+
+  /* --- Chrome & navigation --- */
+  --page-header-bgColor: #000000 !important;
+  --header-bgColor: #000000 !important;
+  --headerSearch-bgColor: #0e0e0e !important;
+  --dashboard-bgColor: #000000 !important;
+  --color-project-sidebar-bg: #000000 !important;
+  --color-project-header-bg: #000000 !important;
+  --sideNav-bgColor-selected: #161616 !important;
+  --menu-bgColor-active: #161616 !important;
+
+  /* --- Containers & cards --- */
+  --bgColor-muted: #0e0e0e !important;
+  --color-canvas-subtle: #0e0e0e !important;
+  --canvas-subtle: #0e0e0e !important;
+  --overlay-bgColor: #161616 !important;
+  --overlay-backdrop-bgColor: rgba(0, 0, 0, 0.8) !important;
+  --card-bgColor: #0e0e0e !important;
+  --tooltip-bgColor: #202020 !important;
+
+  /* Workflow & activity cards */
+  --color-workflow-card-bg: #0e0e0e !important;
+  --timelineBadge-bgColor: #0e0e0e !important;
+  --color-bg-discussions-row-emoji-box: #161616 !important;
+  --color-notifications-row-bg: #0e0e0e !important;
+  --color-notifications-row-read-bg: #000000 !important;
+  --bgColor-upsell-muted: #161616 !important;
+
+  /* --- Interactive controls --- */
+  --button-default-bgColor-rest: #212121 !important;
+  --button-default-bgColor-hover: #303030 !important;
+  --button-default-bgColor-selected: #303030 !important;
+  --button-default-bgColor-active: #202020 !important;
+  --control-bgColor-rest: #161616 !important;
+  --control-bgColor-active: #202020 !important;
+  --button-inactive-bgColor: #111111 !important;
+  --bgColor-disabled: #111111 !important;
+  --control-bgColor-disabled: #111111 !important;
+  --controlKnob-bgColor-rest: #000000 !important;
+
+  /* Segmented controls & transparent buttons */
+  --control-transparent-bgColor-hover: #212121 !important;
+  --control-transparent-bgColor-active: #303030 !important;
+  --control-transparent-bgColor-selected: #212121 !important;
+  --controlTrack-bgColor-hover: #303030 !important;
+  --control-checked-bgColor-active: #303030 !important;
+  --control-checked-borderColor-active: #303030 !important;
+  --controlTrack-bgColor-active: #303030 !important;
+
+  /* Repo counters & labels */
+  --buttonCounter-default-bgColor-rest: #212121 !important;
+  --buttonCounter-outline-bgColor-rest: #212121 !important;
+  --buttonCounter-invisible-bgColor-rest: #212121 !important;
+  --buttonCounter-default-fgColor-rest: #cccccc !important;
+  --buttonCounter-outline-fgColor-rest: #cccccc !important;
+
+  /* Marketing & special buttons (settings, new repo) */
+  --color-mktg-btn-bg: #212121 !important;
+  --color-mktg-btn-shadow-outline: transparent !important;
+  --color-mktg-btn-shadow-hover: transparent !important;
+
+  /* --- Borders & separators --- */
+  /* Structural borders */
+  --borderColor-default: #222222 !important;
+  --border-default: 1px solid #222222 !important;
+  --borderColor-muted: #222222 !important;
+  --border-muted: 1px solid #222222 !important;
+  --control-borderColor-rest: #222222 !important;
+  --selectMenu-borderColor: #222222 !important;
+
+  /* Decorative / tinted borders: none */
+  --header-borderColor-divider: transparent !important;
+  --borderColor-translucent: transparent !important;
+  --button-invisible-borderColor-rest: transparent !important;
+  --item-interactive-border: transparent !important;
+  --topicTag-borderColor: transparent !important;
+  --underlineNav-borderColor-hover: transparent !important;
+
+  /* --- Text --- */
+  --fgColor-default: #eeeeee !important;
+  --fgColor-muted: #999999 !important;
+  --fgColor-neutral: #777777 !important;
+  --color-fg-subtle: #777777 !important;
+  --fgColor-onInverse: #000000 !important;
+
+  /* --- Code & editors --- */
+  --codeMirror-bgColor: #000000 !important;
+  --codeMirror-gutters-bgColor: #000000 !important;
+  --codeMirror-lineNumber-fgColor: #444444 !important;
+  --codeMirror-cursor-fgColor: #eeeeee !important;
+
+  /* Diffs */
+  --diffBlob-hunkLine-bgColor: #111111 !important;
+  --diffBlob-emptyLine-bgColor: #000000 !important;
+  --diffBlob-emptyNum-bgColor: #000000 !important;
+  --diffBlob-hunkNum-bgColor-rest: #0e0e0e !important;
+
+  /* --- Data visualization --- */
+  --controlTrack-bgColor-rest: #222222 !important;
+  --progressBar-track-bgColor: #222222 !important;
+  --controlTrack-borderColor-rest: #333333 !important;
+
+  /* Contribution graph */
+  --contribution-default-bgColor-0: #1c1c1c !important;
+  --contribution-default-borderColor-0: transparent !important;
+
+  /* --- Specific components --- */
+  --avatar-bgColor: rgba(255, 255, 255, 0.1) !important;
+  --avatar-borderColor: transparent !important;
+  --avatar-shadow: none !important;
+
+  /* Tabs & navigation */
+  & button[role="tab"][aria-selected="true"],
+  & .UnderlineNav-item[aria-selected="true"],
+  & .tabnav-tab[aria-selected="true"] {
+    background-color: #1c1c1c !important;
+    border-bottom-color: #eeeeee !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+  }
+
+  & button[role="tab"][aria-selected="false"],
+  & .UnderlineNav-item[aria-selected="false"],
+  & .tabnav-tab[aria-selected="false"] {
+    background-color: transparent !important;
+    color: #888888 !important;
+    border-color: transparent !important;
+  }
+
+  & button[role="tab"][aria-selected="false"]:hover,
+  & .UnderlineNav-item[aria-selected="false"]:hover,
+  & .tabnav-tab[aria-selected="false"]:hover {
+    color: #cccccc !important;
+    background-color: #252525 !important;
+  }
+
+  /* Hard overrides for classes that don't use the variables */
+  & .Header,
+  & .AppHeader {
+    background-color: #000000 !important;
+  }
+
+  & .Box-header {
+    background-color: #0e0e0e !important;
+  }
+
+  & .Box {
+    background-color: #000000 !important;
+    border-color: #333333 !important;
+  }
+
+  & .react-tree-show-tree-items {
+    background-color: #000000 !important;
+  }
+
+  /* Header bottom line, black. GitHub's CSS-module class names end in a
+     build hash (styles-module__appHeader__YzYWk), so match by prefix. */
+  & [class*="styles-module__appHeader__"] {
+    box-shadow: inset 0 calc(var(--borderWidth-thin, 1px) * -1) #000000 !important;
+  }
+
+  /* No borders on the dashboard feed and its sidebar */
+  & aside.feed-left-sidebar,
+  & div.feed-item-content,
+  & div.Box.tmp-mt-4,
+  & div.Box-body.tmp-p-4 {
+    border-style: none !important;
+  }
+
+  /* No line under the repo / profile tabs */
+  & nav[class*="LocalNavigation-module__LocalNavigation__"] {
+    box-shadow: none !important;
+  }
+
+  /* Auto mode with the system in light: undo all of the above */
+  @media (prefers-color-scheme: light) {
+    &[data-color-mode="auto"] {
+      --bgColor-default: unset !important;
+      --bgColor-inset: unset !important;
+      --page-header-bgColor: unset !important;
+      --header-bgColor: unset !important;
+      --dashboard-bgColor: unset !important;
+
+      .Header,
+      .AppHeader,
+      .Box,
+      .Box-header {
+        background-color: unset !important;
+      }
+
+      button[role="tab"],
+      .UnderlineNav-item,
+      .tabnav-tab {
+        background-color: unset !important;
+        color: unset !important;
+      }
+    }
+  }
+}
