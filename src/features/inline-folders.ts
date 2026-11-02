@@ -144,7 +144,7 @@ function removeChildren(path: string): void {
 // A copy of GitHub's own row (same cells and classes, so the table keeps its
 // columns and icon extensions still recognise it), renamed to the item, with
 // its own last commit message and date.
-function makeRow(template: HTMLTableRowElement, folder: Folder, item: Item, depth: number, info?: CommitInfo) {
+function makeRow(template: HTMLTableRowElement, folder: Folder, item: Item, depth: number) {
   const tr = template.cloneNode(true) as HTMLTableRowElement;
   tr.removeAttribute("id");
   tr.classList.add("inline-folder-row");
@@ -160,13 +160,26 @@ function makeRow(template: HTMLTableRowElement, folder: Folder, item: Item, dept
       a.textContent = item.name;
       td.querySelector("svg")?.replaceWith(icon(item.dir));
       td.style.paddingLeft = `calc(16px + ${depth * INDENT}px)`;
-    } else if (td.classList.contains("react-directory-row-commit-cell")) {
+    } else if (td.querySelector(".react-directory-commit-age")) {
+      td.replaceChildren();
+      td.dataset.commitAge = "";
+    } else {
+      td.replaceChildren();
+    }
+  }
+  return tr;
+}
+
+// The commit message and date of a row from makeRow(), once they arrive.
+function fillCommit(tr: HTMLTableRowElement, info: CommitInfo): void {
+  for (const td of tr.cells) {
+    if (td.classList.contains("react-directory-row-commit-cell")) {
       // one line, cut with an ellipsis, like GitHub's own rows
       const line = document.createElement("div");
       line.style.cssText = "overflow: hidden; white-space: nowrap; text-overflow: ellipsis;";
-      if (info) line.append(commitLink(info));
+      line.append(commitLink(info));
       td.replaceChildren(line);
-    } else if (td.querySelector(".react-directory-commit-age") && info?.date) {
+    } else if (td.dataset.commitAge !== undefined && info.date) {
       const age = document.createElement("div");
       age.className = "react-directory-commit-age";
       const time = document.createElement("relative-time");
@@ -174,11 +187,31 @@ function makeRow(template: HTMLTableRowElement, folder: Folder, item: Item, dept
       time.setAttribute("tense", "past");
       age.append(time);
       td.replaceChildren(age);
-    } else {
-      td.replaceChildren();
     }
   }
-  return tr;
+}
+
+// Both requests per folder, started once and kept for the page: hovering a
+// folder starts them, so by the click they're usually done.
+const cache = new Map<string, { items: Promise<Item[]>; info: Promise<Record<string, CommitInfo>> }>();
+
+function load(folder: Folder) {
+  const key = `${folder.owner}/${folder.repo}/${folder.ref}/${folder.path}`;
+  let entry = cache.get(key);
+  if (!entry) {
+    entry = { items: listFolder(folder), info: commitInfo(folder) };
+    entry.items.catch(() => cache.delete(key)); // let a later click retry
+    cache.set(key, entry);
+  }
+  return entry;
+}
+
+// The folder a table link points to, or null for files.
+function folderOf(link: HTMLAnchorElement): Folder | null {
+  const match = new URL(link.href, location.href).pathname.match(TREE_HREF);
+  if (!match) return null;
+  const [, owner = "", repo = "", ref = "", path = ""] = match;
+  return { owner, repo, ref, path: decodeURIComponent(path) };
 }
 
 async function toggle(row: HTMLTableRowElement, link: HTMLAnchorElement, folder: Folder): Promise<void> {
@@ -187,20 +220,35 @@ async function toggle(row: HTMLTableRowElement, link: HTMLAnchorElement, folder:
     removeChildren(folder.path);
     return;
   }
-  row.dataset.inlineExpanded = "1";
+  // a token per expand: a slow load from an earlier expand won't add its rows
+  const token = crypto.randomUUID();
+  row.dataset.inlineExpanded = token;
   link.style.opacity = "0.5";
   try {
-    const [items, info] = await Promise.all([listFolder(folder), commitInfo(folder)]);
-    // folders first, like GitHub
-    items.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+    const { items: itemsPromise, info } = load(folder);
+    // folders first, like GitHub; a copy, the cached list stays as is
+    const items = [...(await itemsPromise)].sort(
+      (a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name),
+    );
+    if (row.dataset.inlineExpanded !== token) return; // collapsed again while loading
     const depth = folder.path.split("/").length;
+    const rows = new Map<string, HTMLTableRowElement>();
     let after = row;
     for (const item of items) {
-      const tr = makeRow(row, folder, item, depth, info[item.name]);
+      const tr = makeRow(row, folder, item, depth);
       after.after(tr);
       after = tr;
+      rows.set(item.name, tr);
     }
+    // the list is shown already; commits fill in whenever they arrive
+    void info.then((entries) => {
+      for (const [name, tr] of rows) {
+        const entry = entries[name];
+        if (entry && tr.isConnected) fillCommit(tr, entry);
+      }
+    });
   } catch (error) {
+    if (row.dataset.inlineExpanded !== token) return;
     delete row.dataset.inlineExpanded;
     console.warn("[Buffed GitHub] inline-folders:", error);
     location.href = link.href; // couldn't list it: open the folder normally
@@ -223,13 +271,28 @@ function onClick(event: MouseEvent): void {
     link = column.querySelector<HTMLAnchorElement>("a.Link--primary");
     if (!link) return;
   }
-  const match = new URL(link.href, location.href).pathname.match(TREE_HREF);
+  const folder = folderOf(link);
   const row = link.closest("tr");
-  if (!match || !row) return; // a file, not a folder
-  const [, owner = "", repo = "", ref = "", path = ""] = match;
+  if (!folder || !row) return; // a file, not a folder
   event.preventDefault();
   event.stopImmediatePropagation();
-  void toggle(row, link, { owner, repo, ref, path: decodeURIComponent(path) });
+  void toggle(row, link, folder);
+}
+
+// Start loading a folder once the pointer rests on its row for HOVER_DELAY ms:
+// aiming at a folder preloads it, sweeping across the list loads nothing.
+const HOVER_DELAY = 100;
+let hoveredRow: Element | null = null;
+let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+
+function onHover(event: MouseEvent): void {
+  const row = (event.target as Element | null)?.closest(`${TABLE} tr`) ?? null;
+  if (row === hoveredRow) return; // still over the same row
+  hoveredRow = row;
+  clearTimeout(hoverTimer);
+  const link = row?.querySelector<HTMLAnchorElement>('.react-directory-filename-column a[aria-label$=", (Directory)"]');
+  const folder = link && folderOf(link);
+  if (folder) hoverTimer = setTimeout(() => load(folder), HOVER_DELAY);
 }
 
 const feature: Feature = {
@@ -241,6 +304,7 @@ const feature: Feature = {
     style.textContent = CSS;
     document.head.append(style);
     document.addEventListener("click", onClick, true);
+    document.addEventListener("mouseover", onHover, { passive: true });
   },
 };
 
