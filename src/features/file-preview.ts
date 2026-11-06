@@ -1,14 +1,14 @@
 // Option-click (Alt-click) a file in a repo's file table to preview it in a
 // dialog instead of navigating. Folders expanded in place stay expanded, and
-// the page is not scrolled. Source is drawn as text nodes; GitHub's pl-*
-// classes supply the colors. Fetched markup is never inserted.
+// the page is not scrolled. The file is read as text and drawn as text nodes.
+// Fetched bytes are never inserted as markup.
 import type { Feature } from "../feature";
 import css from "./file-preview.css";
 import {
   PREVIEW_LIMITS,
   fileFromHref,
-  interpretPreview,
   isPreviewClick,
+  previewFromText,
   segmentsForLine,
   type Preview,
   type RepoFile,
@@ -33,7 +33,16 @@ let pointerDownOnBackdrop = false;
 function pageFetch(path: string, init?: RequestInit): Promise<Response> {
   // Same helper as inline folders: the page's fetch sends the user's cookies,
   // so a private repo the page can see can be previewed too. No extra host.
+  // The raw URL redirects to raw.githubusercontent.com, which allows the page
+  // to read the body. The extension does not ask for that host itself.
   return (globalThis.content?.fetch ?? fetch)(location.origin + path, init);
+}
+
+/** `/owner/repo/blob/ref/path` → `/owner/repo/raw/ref/path`, path left encoded. */
+function rawPathname(pathname: string): string {
+  const parts = pathname.split("/");
+  if (parts[3] === "blob") parts[3] = "raw";
+  return parts.join("/");
 }
 
 function oneLine(value: string): string {
@@ -265,23 +274,23 @@ function isAbort(error: unknown): boolean {
 
 async function loadAndRender(gen: number, signal: AbortSignal, file: RepoFile, ui: Shell): Promise<void> {
   try {
-    const res = await pageFetch(file.pathname, {
+    const res = await pageFetch(rawPathname(file.pathname), {
       credentials: "same-origin",
       signal,
-      headers: { Accept: "text/html" },
+      headers: { Accept: "text/plain, */*;q=0.1" },
     });
     if (gen !== generation || signal.aborted || !ui.root.isConnected) return;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const declared = Number(res.headers.get("content-length") ?? "");
-    if (Number.isFinite(declared) && declared > PREVIEW_LIMITS.maxHtmlChars) {
+    if (Number.isFinite(declared) && declared > PREVIEW_LIMITS.maxChars) {
       await res.body?.cancel().catch(() => {});
       if (gen !== generation || !ui.root.isConnected) return;
       fill(ui, file, { kind: "large", lines: null, sizeLabel: null });
       return;
     }
-    const html = await res.text();
+    const text = await res.text();
     if (gen !== generation || signal.aborted || !ui.root.isConnected) return;
-    fill(ui, file, interpretPreview(html));
+    fill(ui, file, previewFromText(text, res.headers.get("content-type")));
   } catch (error) {
     if (gen !== generation || signal.aborted || isAbort(error) || !ui.root.isConnected) return;
     console.warn("[Buffed GitHub] file-preview:", error);

@@ -4,8 +4,8 @@
 
 export const PREVIEW_LIMITS = {
   /** Above this, building a line of DOM nodes per row is not worth it. */
-  maxLines: 4000,
-  /** Source characters, not the surrounding HTML. */
+  maxLines: 12_000,
+  /** File text. package-lock.json on this repo is under this. */
   maxChars: 256 * 1024,
   /** Blob HTML larger than this is treated as a large file and not parsed. */
   maxHtmlChars: 8_000_000,
@@ -128,6 +128,30 @@ export function segmentsForLine(line: string, directives: unknown): Segment[] {
   }
   if (cursor < line.length || out.length === 0) out.push({ text: line.slice(cursor), cls: null });
   return out;
+}
+
+/**
+ * Preview from the file's own bytes. Text is split into lines and returned as
+ * strings; nothing here interprets markup. Images, octet-streams, and NUL
+ * bytes are not text. Oversized text is refused before the dialog builds a row
+ * per line.
+ */
+export function previewFromText(text: string, contentType: string | null): Preview {
+  const type = (contentType ?? "").toLowerCase();
+  if (type.startsWith("image/")) return { kind: "binary", reason: "image", sizeLabel: null };
+  if (type.includes("octet-stream") || text.includes("\u0000")) return { kind: "binary", reason: "binary", sizeLabel: null };
+  if (text.length > PREVIEW_LIMITS.maxChars) return { kind: "large", lines: null, sizeLabel: null };
+  const lines = text.split(/\r\n|\n|\r/);
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  if (lines.length > PREVIEW_LIMITS.maxLines) return { kind: "large", lines: lines.length, sizeLabel: null };
+  return {
+    kind: "code",
+    language: null,
+    tabSize: 2,
+    lines,
+    directives: lines.map(() => null),
+    sizeLabel: null,
+  };
 }
 
 const EMBEDDED_START = '<script type="application/json" data-target="react-app.embeddedData">';

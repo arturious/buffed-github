@@ -227,7 +227,7 @@ test("Option-click previews a file as text and leaves other clicks alone", async
     const seen: { url: string; init?: RequestInit }[] = [];
     globalThis.fetch = async (input, init) => {
       seen.push({ url: String(input), init });
-      return new Response(sourcePage(["const a = 1;"], [[[0, 5, "pl-k"]]]), { status: 200 });
+      return new Response("const a = 1;\n", { status: 200, headers: { "content-type": "text/plain" } });
     };
     for (const feature of features) feature.run?.();
     const link = page.document.querySelector<HTMLAnchorElement>("#file-row a.Link--primary")!;
@@ -273,18 +273,16 @@ test("Option-click previews a file as text and leaves other clicks alone", async
     assert.equal(box.getAttribute("aria-modal"), "true");
     assert.equal(page.document.querySelector(".bgh-preview-title")?.textContent, "app.ts");
     assert.equal(page.document.querySelector(".bgh-preview-path")?.textContent, "src/app.ts");
-    assert.match(page.document.querySelector(".bgh-preview-meta")?.textContent ?? "", /TypeScript/);
-    const token = page.document.querySelector(".bgh-preview-text span");
-    assert.equal(token?.className, "pl-k");
-    assert.equal(token?.textContent, "const");
+    assert.match(page.document.querySelector(".bgh-preview-meta")?.textContent ?? "", /main/);
+    assert.equal(page.document.querySelector(".bgh-preview-text span"), null);
     assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, "const a = 1;");
     assert.equal(box.querySelector("script, img"), null);
     assert.equal(flags().__fromPage, undefined);
     assert.equal(flags().__pwned, undefined);
     assert.equal(seen.length, 1);
-    assert.equal(seen[0]?.url, `${BASE}/blob/main/src/app.ts`);
+    assert.equal(seen[0]?.url, `${BASE}/raw/main/src/app.ts`);
     assert.equal(seen[0]?.init?.credentials, "same-origin");
-    assert.equal(new Headers(seen[0]?.init?.headers).get("accept"), "text/html");
+    assert.match(new Headers(seen[0]?.init?.headers).get("accept") ?? "", /text\/plain/);
     assert.equal(page.window.location.pathname, "/acme/widgets");
   } finally {
     page.restore();
@@ -308,7 +306,7 @@ test("preview keeps expanded folders and does not move the page", async () => {
     });
     globalThis.fetch = async (input) => {
       const url = String(input);
-      if (url.includes("/blob/")) return new Response(sourcePage(["export const n = 1;"], [[[0, 6, "pl-k"]]]), { status: 200 });
+      if (url.includes("/raw/")) return new Response("export const n = 1;\n", { status: 200 });
       if (url.includes("/tree-commit-info/")) return new Response(JSON.stringify({ entries: {} }), { status: 200 });
       if (url.includes("/tree/")) {
         return new Response(
@@ -349,7 +347,7 @@ test("preview keeps expanded folders and does not move the page", async () => {
 test("rows inserted later and links without Link--primary can be previewed", async () => {
   const page = installDom();
   try {
-    globalThis.fetch = async () => new Response(sourcePage(["# readme"], [[[0, 1, "pl-c"]]]), { status: 200 });
+    globalThis.fetch = async () => new Response("# readme\n", { status: 200 });
     filePreview.run?.();
     const row = page.document.createElement("tr");
     row.className = "inline-folder-row";
@@ -364,7 +362,7 @@ test("rows inserted later and links without Link--primary can be previewed", asy
     click(page.window, page.document.querySelector("#readme-row a")!, { altKey: true });
     await flush();
     assert.equal(page.document.querySelector(".bgh-preview-title")?.textContent, "README.md");
-    assert.equal(page.document.querySelector(".bgh-preview-text span")?.className, "pl-c");
+    assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, "# readme");
   } finally {
     page.restore();
   }
@@ -373,7 +371,7 @@ test("rows inserted later and links without Link--primary can be previewed", asy
 test("Close, Escape, and a click outside dismiss the dialog and return focus", async () => {
   const page = installDom();
   try {
-    globalThis.fetch = async () => new Response(sourcePage(["const a = 1;"], [[[0, 5, "pl-k"]]]), { status: 200 });
+    globalThis.fetch = async () => new Response("const a = 1;\n", { status: 200 });
     filePreview.run?.();
     const link = page.document.querySelector<HTMLAnchorElement>("#file-row a")!;
     link.focus();
@@ -445,7 +443,7 @@ test("loading, errors, empty, binary, and large files have their own states", as
     assert.match(page.document.body.textContent ?? "", /Loading preview…/);
     assert.equal(page.document.querySelector(".bgh-preview-code"), null);
 
-    const late = sourcePage(["LATE_SECRET"]);
+    const late = "LATE_SECRET\n";
     page.document.documentElement.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     assert.equal(dialog(), null);
     release?.(new Response(late, { status: 200 }));
@@ -458,8 +456,8 @@ test("loading, errors, empty, binary, and large files have their own states", as
     click(page.window, link, { altKey: true });
     click(page.window, page.document.querySelector("#other-file a")!, { altKey: true });
     assert.equal(page.document.querySelector(".bgh-preview-title")?.textContent, "util.ts");
-    pending.get(`${BASE}/blob/main/src/app.ts`)?.(new Response(sourcePage(["FIRST_SECRET"]), { status: 200 }));
-    pending.get(`${BASE}/blob/main/src/util.ts`)?.(new Response(sourcePage(["second file"], [[[0, 6, "pl-s"]]]), { status: 200 }));
+    pending.get(`${BASE}/raw/main/src/app.ts`)?.(new Response("FIRST_SECRET\n", { status: 200 }));
+    pending.get(`${BASE}/raw/main/src/util.ts`)?.(new Response("second file\n", { status: 200 }));
     await flush();
     assert.equal((page.document.body.textContent ?? "").includes("FIRST_SECRET"), false);
     assert.match(page.document.querySelector(".bgh-preview-text")?.textContent ?? "", /second file/);
@@ -479,26 +477,25 @@ test("loading, errors, empty, binary, and large files have their own states", as
     assert.match(page.document.querySelector(".bgh-preview-message")?.textContent ?? "", /Couldn't load a preview/);
     assert.equal((page.document.querySelector(".bgh-preview-message")?.textContent ?? "").includes("offline"), false);
 
-    globalThis.fetch = async () => new Response(sourcePage([]), { status: 200 });
+    globalThis.fetch = async () => new Response("", { status: 200, headers: { "content-type": "text/plain" } });
     click(page.window, link, { altKey: true });
     await flush();
     assert.equal(dialog()?.dataset.state, "code");
     assert.match(page.document.body.textContent ?? "", /This file is empty/);
 
-    globalThis.fetch = async () => new Response(embed({ image: true, viewable: false, headerInfo: { blobSize: "4 KB" } }, { rawLines: ["PNGDATA"] }), { status: 200 });
+    globalThis.fetch = async () => new Response("PNGDATA", { status: 200, headers: { "content-type": "image/png" } });
     click(page.window, link, { altKey: true });
     await flush();
     assert.equal(dialog()?.dataset.state, "binary");
     assert.match(page.document.body.textContent ?? "", /image can't be previewed/);
     assert.equal((page.document.body.textContent ?? "").includes("PNGDATA"), false);
 
-    globalThis.fetch = async () => new Response(sourcePage(["SECRET"], null, { large: true, headerInfo: { blobSize: "3 MB" } }), { status: 200 });
+    globalThis.fetch = async () => new Response("x".repeat(PREVIEW_LIMITS.maxChars + 1), { status: 200, headers: { "content-type": "text/plain" } });
     click(page.window, link, { altKey: true });
     await flush();
     assert.equal(dialog()?.dataset.state, "large");
     assert.match(page.document.body.textContent ?? "", /too large to preview/);
-    assert.match(page.document.body.textContent ?? "", /3 MB/);
-    assert.equal((page.document.body.textContent ?? "").includes("SECRET"), false);
+    assert.equal((page.document.body.textContent ?? "").includes("xxxx"), false);
     assert.equal(page.document.querySelector<HTMLAnchorElement>(".bgh-preview-open")?.href, link.href);
     assert.equal(page.window.location.pathname, "/acme/widgets");
   } finally {
@@ -511,7 +508,7 @@ test("source that looks like markup is text, including a broken script tag in th
   const page = installDom();
   try {
     const attack = '<script>globalThis.__pwned = true</script><img src=x onerror="globalThis.__pwned = true">';
-    globalThis.fetch = async () => new Response(sourcePage([attack], [[0, 8, 'pl-k" onclick="globalThis.__pwned = true']]), { status: 200 });
+    globalThis.fetch = async () => new Response(attack, { status: 200, headers: { "content-type": "text/plain" } });
     filePreview.run?.();
     click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
     await flush();
@@ -527,11 +524,12 @@ test("source that looks like markup is text, including a broken script tag in th
     assert.equal(flags().__pwned, undefined);
     assert.equal(flags().__fromPage, undefined);
 
-    const broken = `<script type="application/json" data-target="react-app.embeddedData">{"payload":{"rawLines":["</script><script>globalThis.__pwned = true</script>"]}}</script>`;
-    globalThis.fetch = async () => new Response(broken, { status: 200 });
+    const broken = `</script><script>globalThis.__pwned = true</script>`;
+    globalThis.fetch = async () => new Response(broken, { status: 200, headers: { "content-type": "text/plain" } });
     click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
     await flush();
-    assert.equal(dialog()?.dataset.state, "error");
+    assert.equal(dialog()?.dataset.state, "code");
+    assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, broken);
     assert.equal(dialog()?.querySelector("script"), null);
     assert.equal(flags().__pwned, undefined);
   } finally {
