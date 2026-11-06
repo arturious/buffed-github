@@ -7,7 +7,8 @@
   "scripts": {
     "build": "node build.js",
     "watch": "node build.js --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "node test/run.js",
     "lint": "npm run build && web-ext lint --source-dir dist",
     "start": "web-ext run --source-dir dist --firefox /Applications/Zen.app/Contents/MacOS/zen",
     "sign": "npm run typecheck && npm run build && web-ext sign --source-dir dist --channel unlisted",
@@ -15,7 +16,9 @@
   },
   "devDependencies": {
     "@types/firefox-webext-browser": "^143.0.1",
+    "@types/node": "^22.19.0",
     "esbuild": "^0.28.2",
+    "jsdom": "^27.0.0",
     "typescript": "^7.0.2",
     "web-ext": "^10.8.0"
   }
