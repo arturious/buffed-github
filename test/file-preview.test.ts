@@ -434,7 +434,7 @@ test("loading, errors, empty, binary, and large files have their own states", as
     await flush();
     assert.deepEqual(
       Array.from(page.document.querySelectorAll(".bgh-preview-text"), (node) => node.textContent),
-      ["one", "two", "three"],
+      ["only"],
     );
     assert.equal(page.window.location.pathname, "/acme/widgets");
   } finally {
@@ -469,6 +469,52 @@ test("source that looks like markup is text, including a broken script tag in th
     assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, broken);
     assert.equal(dialog()?.querySelector("script"), null);
     assert.equal(flags().__pwned, undefined);
+  } finally {
+    page.restore();
+  }
+});
+
+test("syntax colors and indent marks do not change the copied source", async () => {
+  const page = installDom();
+  try {
+    page.document.documentElement.style.setProperty("--prettylights-syntax-entityTag", "#7ee787");
+    page.document.documentElement.style.setProperty("--prettylights-syntax-keyword", "#ff7b72");
+    const lines = ["<html>", "\t<head>"];
+    const body = `<section aria-labelledby="file-name-id">
+      <div data-testid="code-cell"><span class="pl-kos">&lt;</span><span class="pl-ent">html</span><span class="pl-kos">&gt;</span></div>
+      <div data-testid="code-cell">\t<span class="pl-kos">&lt;</span><span class="pl-ent">head</span><span class="pl-kos">&gt;</span></div>
+    </section>{"tabSize":4,"rawLines":["wrong"],"stylingDirectives":[[[0,5,"pl-k"]]]}`;
+    globalThis.fetch = async () => new Response(body, { status: 200, headers: { "content-type": "text/html" } });
+    filePreview.run?.();
+    click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
+    await flush();
+    const texts = Array.from(page.document.querySelectorAll(".bgh-preview-text"), (node) => node.textContent);
+    assert.deepEqual(texts, lines);
+    assert.equal(page.document.querySelector(".bgh-preview-indent")?.textContent, "\t");
+    const ent = page.document.querySelector<HTMLElement>(".pl-ent");
+    assert.equal(ent?.textContent, "html");
+    assert.match(ent?.style.color ?? "", /^(#7ee787|rgb\(\s*126,\s*231,\s*135\s*\))$/i);
+    assert.equal(page.document.querySelector(".pl-k"), null);
+    assert.equal((page.document.body.textContent ?? "").includes("·"), false);
+    const code = page.document.querySelector<HTMLElement>(".bgh-preview-code");
+    assert.ok(code);
+    assert.equal(code.style.tabSize, "4");
+    const range = page.document.createRange();
+    range.selectNodeContents(code);
+    const selection = page.window.getSelection();
+    assert.ok(selection);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    let copied = "";
+    const CopyEvent = (page.window as unknown as { Event: typeof Event }).Event;
+    const event = new CopyEvent("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: { setData(_type: string, value: string) { copied = value; } },
+    });
+    code.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(copied, "<html>\n\t<head>");
+    assert.equal(copied.includes("1"), false);
   } finally {
     page.restore();
   }
