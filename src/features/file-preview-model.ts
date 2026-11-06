@@ -154,6 +154,46 @@ export function previewFromText(text: string, contentType: string | null): Previ
   };
 }
 
+/**
+ * Lines GitHub copies into `#read-only-cursor-text-area` after the blob page
+ * hydrates. The textarea itself is not in the fetched HTML. Returns null when
+ * the array is absent or not a list of strings.
+ */
+export function rawLinesInHtml(html: string): string[] | null {
+  const key = '"rawLines":';
+  const at = html.indexOf(key);
+  if (at < 0) return null;
+  const start = html.indexOf("[", at + key.length);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < html.length; i++) {
+    const char = html[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "[") depth += 1;
+    else if (char === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const value = JSON.parse(html.slice(start, i + 1)) as unknown;
+          if (!Array.isArray(value) || value.some((line) => typeof line !== "string")) return null;
+          return value as string[];
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 const EMBEDDED_START = '<script type="application/json" data-target="react-app.embeddedData">';
 
 /** Read the preview from a blob page's HTML. Never returns markup to insert. */

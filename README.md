@@ -14,7 +14,7 @@ Each feature can be switched off on its own in the extension's settings.
 
 ## Quick file preview
 
-In a repository file table, hold **Option** (Alt) and click a file, for example a `.ts` link. A dialog opens over the page with the file's text. The text scrolls inside the dialog. Light mode, dark mode, and the black theme still apply to the dialog itself.
+In a repository file table, hold **Option** (Alt) and click a file, for example a `.ts` link. A dialog opens over the page with the file's text, read from the file page GitHub already serves on github.com. The text scrolls inside the dialog. Light mode, dark mode, and the black theme still apply to the dialog itself.
 
 Close it with **Close**, **Escape**, or a click on the dimmed area around the dialog. The table underneath is left as it was: folders you expanded stay expanded, and the page does not jump.
 

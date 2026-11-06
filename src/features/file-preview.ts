@@ -1,7 +1,8 @@
 // Option-click (Alt-click) a file in a repo's file table to preview it in a
 // dialog instead of navigating. Folders expanded in place stay expanded, and
-// the page is not scrolled. The file is read as text and drawn as text nodes.
-// Fetched bytes are never inserted as markup.
+// the page is not scrolled. The file text is read from the same-origin blob
+// page and drawn as text nodes. Fetched HTML is parsed, never inserted, and
+// its scripts are not run.
 import type { Feature } from "../feature";
 import css from "./file-preview.css";
 import {
@@ -9,6 +10,7 @@ import {
   fileFromHref,
   isPreviewClick,
   previewFromText,
+  rawLinesInHtml,
   segmentsForLine,
   type Preview,
   type RepoFile,
@@ -31,18 +33,9 @@ let opener: HTMLElement | null = null;
 let pointerDownOnBackdrop = false;
 
 function pageFetch(path: string, init?: RequestInit): Promise<Response> {
-  // Same helper as inline folders: the page's fetch sends the user's cookies,
-  // so a private repo the page can see can be previewed too. No extra host.
-  // The raw URL redirects to raw.githubusercontent.com, which allows the page
-  // to read the body. The extension does not ask for that host itself.
+  // Page fetch, used only if the content-script fetch did not get the blob
+  // document. It sends the user's cookies for a private repo. No extra host.
   return (globalThis.content?.fetch ?? fetch)(location.origin + path, init);
-}
-
-/** `/owner/repo/blob/ref/path` → `/owner/repo/raw/ref/path`, path left encoded. */
-function rawPathname(pathname: string): string {
-  const parts = pathname.split("/");
-  if (parts[3] === "blob") parts[3] = "raw";
-  return parts.join("/");
 }
 
 function oneLine(value: string): string {
@@ -272,25 +265,64 @@ function isAbort(error: unknown): boolean {
   return (error as { name: unknown }).name === "AbortError";
 }
 
+function looksLikeBlob(html: string): boolean {
+  return html.includes('"rawLines":') || html.includes('data-testid="code-cell"') || html.includes("read-only-cursor-text-area");
+}
+
+/** Text of the file GitHub shows. The live `#read-only-cursor-text-area` is
+ * created by client script and is not in fetched HTML; `rawLines` is what
+ * GitHub copies into it. Code cells are the server-rendered block, kept for
+ * pages that have no `rawLines`. */
+function textFromBlobHtml(html: string): { text: string } | { image: true } | null {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const area = doc.querySelector<HTMLTextAreaElement>("#read-only-cursor-text-area");
+  if (area && area.value.length > 0) return { text: area.value };
+  const embedded = rawLinesInHtml(html);
+  if (embedded) return { text: embedded.join("\n") };
+  const root = doc.querySelector('section[aria-labelledby*="file-name-id"]');
+  const cells = (root ?? doc).querySelectorAll('[data-testid="code-cell"]');
+  if (cells.length) return { text: Array.from(cells, (cell) => cell.textContent ?? "").join("\n") };
+  if (root?.querySelector("img, video")) return { image: true };
+  if (area || root) return { text: "" };
+  return null;
+}
+
+async function blobHtml(pathname: string, signal: AbortSignal): Promise<string> {
+  const init: RequestInit = {
+    credentials: "include",
+    signal,
+    cache: "no-store",
+    headers: { Accept: "text/html" },
+  };
+  // Content-script fetch, not the page's fetch: GitHub's client router answers
+  // the page fetch with a payload that has no file text.
+  const direct = await fetch(location.origin + pathname, init);
+  if (!direct.ok) throw new Error(`HTTP ${direct.status}`);
+  const html = await direct.text();
+  if (looksLikeBlob(html) || !globalThis.content?.fetch) return html;
+  const viaPage = await pageFetch(pathname, init);
+  if (!viaPage.ok) return html;
+  return viaPage.text();
+}
+
 async function loadAndRender(gen: number, signal: AbortSignal, file: RepoFile, ui: Shell): Promise<void> {
   try {
-    const res = await pageFetch(rawPathname(file.pathname), {
-      credentials: "same-origin",
-      signal,
-      headers: { Accept: "text/plain, */*;q=0.1" },
-    });
+    const html = await blobHtml(file.pathname, signal);
     if (gen !== generation || signal.aborted || !ui.root.isConnected) return;
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const declared = Number(res.headers.get("content-length") ?? "");
-    if (Number.isFinite(declared) && declared > PREVIEW_LIMITS.maxChars) {
-      await res.body?.cancel().catch(() => {});
-      if (gen !== generation || !ui.root.isConnected) return;
+    if (html.length > PREVIEW_LIMITS.maxHtmlChars) {
       fill(ui, file, { kind: "large", lines: null, sizeLabel: null });
       return;
     }
-    const text = await res.text();
-    if (gen !== generation || signal.aborted || !ui.root.isConnected) return;
-    fill(ui, file, previewFromText(text, res.headers.get("content-type")));
+    const read = textFromBlobHtml(html);
+    if (!read) {
+      fill(ui, file, { kind: "error", message: "Couldn't read the code from this page." });
+      return;
+    }
+    if ("image" in read) {
+      fill(ui, file, { kind: "binary", reason: "image", sizeLabel: null });
+      return;
+    }
+    fill(ui, file, previewFromText(read.text, "text/plain"));
   } catch (error) {
     if (gen !== generation || signal.aborted || isAbort(error) || !ui.root.isConnected) return;
     console.warn("[Buffed GitHub] file-preview:", error);
