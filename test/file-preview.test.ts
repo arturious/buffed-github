@@ -434,7 +434,7 @@ test("loading, errors, empty, binary, and large files have their own states", as
     await flush();
     assert.deepEqual(
       Array.from(page.document.querySelectorAll(".bgh-preview-text"), (node) => node.textContent),
-      ["one", "two", "three"],
+      ["only"],
     );
     assert.equal(page.window.location.pathname, "/acme/widgets");
   } finally {
@@ -477,15 +477,13 @@ test("source that looks like markup is text, including a broken script tag in th
 test("syntax colors and indent marks do not change the copied source", async () => {
   const page = installDom();
   try {
+    page.document.documentElement.style.setProperty("--prettylights-syntax-entityTag", "#7ee787");
+    page.document.documentElement.style.setProperty("--prettylights-syntax-keyword", "#ff7b72");
     const lines = ["<html>", "\t<head>"];
-    const body = JSON.stringify({
-      tabSize: 4,
-      rawLines: lines,
-      stylingDirectives: [
-        [[0, 1, "pl-kos"], [1, 5, "pl-ent"], [5, 6, "pl-kos"]],
-        [[1, 2, "pl-kos"], [2, 6, "pl-ent"], [6, 7, "pl-kos"], [0, 1, "not-a-class"]],
-      ],
-    });
+    const body = `<section aria-labelledby="file-name-id">
+      <div data-testid="code-cell"><span class="pl-kos">&lt;</span><span class="pl-ent">html</span><span class="pl-kos">&gt;</span></div>
+      <div data-testid="code-cell">\t<span class="pl-kos">&lt;</span><span class="pl-ent">head</span><span class="pl-kos">&gt;</span></div>
+    </section>{"tabSize":4,"rawLines":["wrong"],"stylingDirectives":[[[0,5,"pl-k"]]]}`;
     globalThis.fetch = async () => new Response(body, { status: 200, headers: { "content-type": "text/html" } });
     filePreview.run?.();
     click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
@@ -493,8 +491,10 @@ test("syntax colors and indent marks do not change the copied source", async () 
     const texts = Array.from(page.document.querySelectorAll(".bgh-preview-text"), (node) => node.textContent);
     assert.deepEqual(texts, lines);
     assert.equal(page.document.querySelector(".bgh-preview-indent")?.textContent, "\t");
-    assert.equal(page.document.querySelector(".pl-ent")?.textContent, "html");
-    assert.equal(page.document.querySelector(".bgh-preview-code")?.textContent?.includes("not-a-class"), false);
+    const ent = page.document.querySelector<HTMLElement>(".pl-ent");
+    assert.equal(ent?.textContent, "html");
+    assert.match(ent?.style.color ?? "", /^(#7ee787|rgb\(\s*126,\s*231,\s*135\s*\))$/i);
+    assert.equal(page.document.querySelector(".pl-k"), null);
     assert.equal((page.document.body.textContent ?? "").includes("·"), false);
     const code = page.document.querySelector<HTMLElement>(".bgh-preview-code");
     assert.ok(code);

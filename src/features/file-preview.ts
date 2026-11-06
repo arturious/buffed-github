@@ -9,11 +9,13 @@ import {
   PREVIEW_LIMITS,
   fileFromHref,
   isPreviewClick,
+  directivesFromCodeCell,
   highlightedSource,
   indentLength,
   previewFromLines,
   previewFromText,
   segmentsForLine,
+  tabSizeInHtml,
   type Preview,
   type RepoFile,
 } from "./file-preview-model";
@@ -112,6 +114,7 @@ function renderCode(preview: Extract<Preview, { kind: "code" }>): HTMLElement {
   code.style.tabSize = String(preview.tabSize);
   code.spellcheck = false;
   code.translate = false;
+  const colors = tokenColors(code.ownerDocument);
   const frag = document.createDocumentFragment();
   for (let i = 0; i < preview.lines.length; i++) {
     const line = preview.lines[i] ?? "";
@@ -119,7 +122,7 @@ function renderCode(preview: Extract<Preview, { kind: "code" }>): HTMLElement {
     const gutter = el("span", "bgh-preview-gutter", String(i + 1));
     gutter.setAttribute("aria-hidden", "true");
     const text = el("span", "bgh-preview-text");
-    appendLine(text, line, preview.directives[i]);
+    appendLine(text, line, preview.directives[i], colors);
     row.append(gutter, text);
     frag.append(row);
   }
@@ -129,12 +132,11 @@ function renderCode(preview: Extract<Preview, { kind: "code" }>): HTMLElement {
 }
 
 /** Leading spaces and tabs stay in the text. A marker span only paints dots over them. */
-function appendLine(parent: HTMLElement, line: string, directives: unknown): void {
+function appendLine(parent: HTMLElement, line: string, directives: unknown, colors: Map<string, string>): void {
   const indent = indentLength(line);
   let remaining = indent;
-  let marker: HTMLElement | null = null;
   if (indent > 0) {
-    marker = el("span", "bgh-preview-indent");
+    const marker = el("span", "bgh-preview-indent");
     marker.textContent = line.slice(0, indent);
     parent.append(marker);
   }
@@ -150,11 +152,57 @@ function appendLine(parent: HTMLElement, line: string, directives: unknown): voi
       const token = document.createElement("span");
       token.className = segment.cls;
       token.textContent = value;
+      const color = colors.get(segment.cls);
+      if (color) token.style.color = color;
       parent.append(token);
     } else {
       parent.append(document.createTextNode(value));
     }
   }
+}
+
+/** Resolve GitHub prettylights colors from the page's own CSS variables. */
+function tokenColors(doc: Document): Map<string, string> {
+  const root = doc.documentElement;
+  const style = doc.defaultView?.getComputedStyle(root);
+  const read = (...names: string[]): string => {
+    if (!style) return "";
+    for (const name of names) {
+      const value = style.getPropertyValue(name).trim();
+      if (value) return value;
+    }
+    return "";
+  };
+  const map = new Map<string, string>();
+  const put = (cls: string, value: string): void => {
+    if (value) map.set(cls, value);
+  };
+  put("pl-c", read("--color-prettylights-syntax-comment", "--prettylights-syntax-comment"));
+  put("pl-c1", read("--color-prettylights-syntax-constant", "--prettylights-syntax-constant"));
+  put("pl-e", read("--color-prettylights-syntax-entity", "--prettylights-syntax-entity"));
+  put("pl-en", read("--color-prettylights-syntax-entity", "--prettylights-syntax-entity"));
+  put(
+    "pl-smi",
+    read("--color-prettylights-syntax-storage-modifier-import", "--prettylights-syntax-storageModifierImport"),
+  );
+  put(
+    "pl-s1",
+    read("--color-prettylights-syntax-storage-modifier-import", "--prettylights-syntax-storageModifierImport"),
+  );
+  put("pl-ent", read("--color-prettylights-syntax-entity-tag", "--prettylights-syntax-entityTag"));
+  put("pl-k", read("--color-prettylights-syntax-keyword", "--prettylights-syntax-keyword"));
+  put("pl-s", read("--color-prettylights-syntax-string", "--prettylights-syntax-string"));
+  put("pl-pds", read("--color-prettylights-syntax-string", "--prettylights-syntax-string"));
+  put("pl-sr", read("--color-prettylights-syntax-string", "--prettylights-syntax-string"));
+  put("pl-v", read("--color-prettylights-syntax-variable", "--prettylights-syntax-variable"));
+  put(
+    "pl-corl",
+    read(
+      "--color-prettylights-syntax-constant-other-reference-link",
+      "--prettylights-syntax-constantOtherReferenceLink",
+    ),
+  );
+  return map;
 }
 
 function onCopy(event: ClipboardEvent): void {
@@ -315,19 +363,27 @@ function isAbort(error: unknown): boolean {
   return (error as { name: unknown }).name === "AbortError";
 }
 
-/** Text of the file GitHub shows. The live `#read-only-cursor-text-area` is
- * created by client script and is not in fetched HTML; `rawLines` is what
- * GitHub copies into it. Code cells are the server-rendered block, kept for
- * pages that have no `rawLines`. */
+/** Text of the file GitHub shows. Prefer the server-rendered code cells: they
+ * already carry `pl-*` tokens. `rawLines` / `stylingDirectives` are the
+ * fallback when cells are absent. The live textarea is client-only. */
 function textFromBlobHtml(html: string): Preview | { image: true } | null {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const area = doc.querySelector<HTMLTextAreaElement>("#read-only-cursor-text-area");
   if (area && area.value.length > 0) return previewFromText(area.value);
-  const highlighted = highlightedSource(html);
-  if (highlighted) return previewFromLines(highlighted.lines, highlighted.directives, highlighted.tabSize);
   const root = doc.querySelector('section[aria-labelledby*="file-name-id"]');
   const cells = (root ?? doc).querySelectorAll('[data-testid="code-cell"]');
-  if (cells.length) return previewFromText(Array.from(cells, (cell) => cell.textContent ?? "").join("\n"));
+  if (cells.length) {
+    const lines: string[] = [];
+    const directives: unknown[] = [];
+    for (const cell of cells) {
+      const painted = directivesFromCodeCell(cell);
+      lines.push(painted.line);
+      directives.push(painted.directives);
+    }
+    return previewFromLines(lines, directives, tabSizeInHtml(html));
+  }
+  const highlighted = highlightedSource(html);
+  if (highlighted) return previewFromLines(highlighted.lines, highlighted.directives, highlighted.tabSize);
   if (root?.querySelector("img, video")) return { image: true };
   if (area || root) return previewFromText("");
   return null;

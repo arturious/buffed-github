@@ -1,7 +1,7 @@
 /* In-page file preview. Chrome colors come from GitHub's variables. Token
-   colors are GitHub's own .pl-* rules, already on the page, so light mode,
-   dark mode, and the black theme restyle the source. Fetched HTML is never
-   inserted. Indent dots are a background, not characters. */
+   colors reuse GitHub's prettylights variables; the rules are scoped here so
+   they still apply when the preview opens on a tree page (not only a blob
+   page). Fetched HTML is never inserted. Indent dots are a background. */
 
 .bgh-preview-backdrop {
   position: fixed;
@@ -143,6 +143,51 @@
   flex: none;
   padding-right: 16px;
   white-space: pre;
+}
+
+/* Same mapping as GitHub's global prettylights rules, scoped to the dialog. */
+.bgh-preview .pl-c {
+  color: var(--color-prettylights-syntax-comment, var(--prettylights-syntax-comment));
+}
+.bgh-preview .pl-c1 {
+  color: var(--color-prettylights-syntax-constant, var(--prettylights-syntax-constant));
+}
+.bgh-preview .pl-e,
+.bgh-preview .pl-en {
+  color: var(--color-prettylights-syntax-entity, var(--prettylights-syntax-entity));
+}
+.bgh-preview .pl-smi,
+.bgh-preview .pl-s1 {
+  color: var(
+    --color-prettylights-syntax-storage-modifier-import,
+    var(--prettylights-syntax-storageModifierImport)
+  );
+}
+.bgh-preview .pl-ent {
+  color: var(--color-prettylights-syntax-entity-tag, var(--prettylights-syntax-entityTag));
+}
+.bgh-preview .pl-k {
+  color: var(--color-prettylights-syntax-keyword, var(--prettylights-syntax-keyword));
+}
+.bgh-preview .pl-s,
+.bgh-preview .pl-pds,
+.bgh-preview .pl-sr,
+.bgh-preview .pl-sra,
+.bgh-preview .pl-sre {
+  color: var(--color-prettylights-syntax-string, var(--prettylights-syntax-string));
+}
+.bgh-preview .pl-v,
+.bgh-preview .pl-smw {
+  color: var(--color-prettylights-syntax-variable, var(--prettylights-syntax-variable));
+}
+.bgh-preview .pl-corl {
+  color: var(
+    --color-prettylights-syntax-constant-other-reference-link,
+    var(--prettylights-syntax-constantOtherReferenceLink)
+  );
+}
+.bgh-preview .pl-token {
+  color: var(--color-prettylights-syntax-keyword, var(--prettylights-syntax-keyword));
 }
 
 .bgh-preview:focus {

@@ -205,18 +205,58 @@ export function rawLinesInHtml(html: string): string[] | null {
   return value as string[];
 }
 
+export function tabSizeInHtml(html: string): number {
+  const tabMatch = html.match(/"tabSize":(\d+)/);
+  const parsed = tabMatch ? Number(tabMatch[1]) : 4;
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 16 ? parsed : 4;
+}
+
 /** `rawLines`, the parallel `stylingDirectives`, and `tabSize` from one blob page. */
 export function highlightedSource(html: string): { lines: string[]; directives: unknown[]; tabSize: number } | null {
   const lines = rawLinesInHtml(html);
   if (!lines) return null;
   const at = html.indexOf('"rawLines":');
   const styling = jsonArrayAfter(html, '"stylingDirectives":', at);
-  const tabMatch = html.match(/"tabSize":(\d+)/);
-  const parsed = tabMatch ? Number(tabMatch[1]) : 4;
   return {
     lines,
     directives: lines.map((_, index) => styling?.[index] ?? null),
-    tabSize: Number.isInteger(parsed) && parsed >= 1 && parsed <= 16 ? parsed : 4,
+    tabSize: tabSizeInHtml(html),
   };
+}
+
+/**
+ * Token ranges from a server-rendered code cell. Only `pl-*` classes are kept.
+ * Nested tokens use the innermost class, same as GitHub's paint order.
+ */
+export function directivesFromCodeCell(cell: ParentNode): { line: string; directives: unknown[] } {
+  let line = "";
+  const directives: unknown[] = [];
+  const visit = (node: Node, cls: string | null): void => {
+    if (node.nodeType === 3) {
+      const text = node.nodeValue ?? "";
+      if (cls && text.length > 0) directives.push([line.length, line.length + text.length, cls]);
+      line += text;
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const element = node as Element;
+    let next = cls;
+    const className = element.getAttribute("class");
+    if (className) {
+      for (const name of className.split(/\s+/)) {
+        if (TOKEN_CLASS.test(name)) {
+          next = name;
+          break;
+        }
+      }
+    }
+    const children = element.childNodes;
+    for (let index = 0; index < children.length; index++) {
+      const child = children[index];
+      if (child) visit(child, next);
+    }
+  };
+  visit(cell, null);
+  return { line, directives };
 }
 
