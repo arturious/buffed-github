@@ -5,14 +5,7 @@ import { test } from "node:test";
 import { JSDOM, VirtualConsole, type TestWindow } from "jsdom";
 import { features } from "../src/features/index";
 import filePreview from "../src/features/file-preview";
-import {
-  PREVIEW_LIMITS,
-  fileFromHref,
-  interpretPreview,
-  isPreviewClick,
-  segmentsForLine,
-  type Preview,
-} from "../src/features/file-preview-model";
+import { PREVIEW_LIMITS, fileFromHref, isPreviewClick } from "../src/features/file-preview-model";
 
 const BASE = "https://github.com/acme/widgets";
 
@@ -43,30 +36,6 @@ const TABLE = `
     </tbody>
   </table>
 `;
-
-function embed(blob: Record<string, unknown>, styled?: Record<string, unknown>): string {
-  const payload: Record<string, unknown> = { codeViewBlobLayoutRoute: { blob } };
-  if (styled) payload["codeViewBlobLayoutRoute.StyledBlob"] = styled;
-  // GitHub escapes "<" in this JSON. A raw "</script>" would end the tag.
-  const json = JSON.stringify({ payload }).replaceAll("<", "\\u003c");
-  return `<!doctype html><html><body><script type="application/json" data-target="react-app.embeddedData">${json}</script><script>globalThis.__fromPage = true</script><img src="x" onerror="globalThis.__pwned = true"></body></html>`;
-}
-
-function sourcePage(lines: string[], directives?: unknown, blob: Record<string, unknown> = {}): string {
-  return embed(
-    {
-      language: "TypeScript",
-      large: false,
-      truncated: false,
-      viewable: true,
-      image: false,
-      tabSize: 4,
-      headerInfo: { blobSize: "1 KB", lineInfo: { truncatedLoc: String(lines.length) } },
-      ...blob,
-    },
-    { rawLines: lines, stylingDirectives: directives ?? null },
-  );
-}
 
 function installDom(body = TABLE, url = BASE) {
   const navigations: string[] = [];
@@ -131,8 +100,8 @@ function dialog(): HTMLElement | null {
   return document.querySelector<HTMLElement>(".bgh-preview");
 }
 
-function flags(): { __fromPage?: boolean; __pwned?: boolean } {
-  return globalThis as { __fromPage?: boolean; __pwned?: boolean };
+function flags(): { __pwned?: boolean } {
+  return globalThis as { __pwned?: boolean };
 }
 
 test("preview click is Option or Alt plus the primary button, and nothing else", () => {
@@ -159,51 +128,6 @@ test("file links are blob paths on this origin", () => {
   assert.equal(fileFromHref("https://evil.example/acme/widgets/blob/main/a.ts", BASE), null);
   assert.equal(fileFromHref("javascript:alert(1)", BASE), null);
   assert.equal(fileFromHref("https://github.com/acme/widgets/commit/abc", BASE), null);
-});
-
-test("highlight ranges become text segments and reject anything that is not a pl- class", () => {
-  assert.deepEqual(segmentsForLine("const x", [[0, 5, "pl-k"]]), [
-    { text: "const", cls: "pl-k" },
-    { text: " x", cls: null },
-  ]);
-  // A class that is not a single pl-* token is dropped; a later valid range still applies.
-  assert.deepEqual(segmentsForLine("<script>no</script>", [[0, 8, 'pl-k" onmouseover="x'], [2, 4, "pl-c"]]), [
-    { text: "<s", cls: null },
-    { text: "cr", cls: "pl-c" },
-    { text: "ipt>no</script>", cls: null },
-  ]);
-  assert.deepEqual(segmentsForLine("abcd", [[0, 4, "pl-s"], [1, 3, "pl-k"], [-1, 2, "pl-c"], [1.5, 3, "pl-c"], [8, 9, "pl-c"]]), [
-    { text: "abcd", cls: "pl-s" },
-  ]);
-  assert.deepEqual(segmentsForLine("", null), [{ text: "", cls: null }]);
-});
-
-test("blob HTML is classified without keeping fetched markup", () => {
-  const code = interpretPreview(sourcePage(["const a = 1;"], [[[0, 5, "pl-k"]]])) as Extract<Preview, { kind: "code" }>;
-  assert.equal(code.kind, "code");
-  assert.equal(code.language, "TypeScript");
-  assert.equal(code.tabSize, 4);
-  assert.deepEqual(code.lines, ["const a = 1;"]);
-  assert.equal(code.sizeLabel, "1 KB");
-
-  const attack = '<script>globalThis.__pwned = true</script><img src=x onerror="globalThis.__pwned = true">';
-  const attacked = interpretPreview(sourcePage([attack], [[[0, 8, "pl-s"]]])) as Extract<Preview, { kind: "code" }>;
-  assert.deepEqual(attacked.lines, [attack]);
-
-  assert.equal(interpretPreview(embed({ image: true, viewable: false, headerInfo: { blobSize: "2 KB" } }, { rawLines: ["PNG"] })).kind, "binary");
-  assert.equal(interpretPreview(embed({ viewable: false, image: false })).kind, "binary");
-  assert.equal(interpretPreview(sourcePage(["secret"], null, { large: true })).kind, "large");
-  assert.equal(interpretPreview(sourcePage(["partial"], null, { truncated: true })).kind, "large");
-  assert.equal(interpretPreview(embed({ viewable: true, headerInfo: { blobSize: "2 KB" } })).kind, "error");
-  assert.equal(interpretPreview(embed({ viewable: true, headerInfo: { blobSize: "548 KB" } })).kind, "large");
-  assert.equal(interpretPreview(sourcePage(["a".repeat(PREVIEW_LIMITS.maxChars + 1)])).kind, "large");
-  assert.equal(interpretPreview(sourcePage(Array.from({ length: PREVIEW_LIMITS.maxLines + 1 }, () => "x"))).kind, "large");
-  assert.equal(interpretPreview(sourcePage(["safe\u0000"])).kind, "binary");
-  assert.equal(interpretPreview("<html>no embedded data</html>").kind, "error");
-  assert.equal(interpretPreview(`${'<script type="application/json" data-target="react-app.embeddedData">{'}</script>`).kind, "error");
-  assert.equal(interpretPreview("x".repeat(PREVIEW_LIMITS.maxHtmlChars + 1)).kind, "large");
-  assert.equal(flags().__pwned, undefined);
-  assert.equal(flags().__fromPage, undefined);
 });
 
 test("quick file preview is its own switch and does not replace the other features", () => {
@@ -285,7 +209,6 @@ test("Option-click previews a file as text and leaves other clicks alone", async
     assert.equal(page.document.querySelector(".bgh-preview-text span"), null);
     assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, "const a = 1;");
     assert.equal(box.querySelector("script, img"), null);
-    assert.equal(flags().__fromPage, undefined);
     assert.equal(flags().__pwned, undefined);
     assert.equal(seen.length, 1);
     assert.equal(seen[0]?.url, `${BASE}/blob/main/src/app.ts`);
@@ -535,10 +458,8 @@ test("source that looks like markup is text, including a broken script tag in th
     for (const node of box.querySelectorAll<HTMLElement>("*")) {
       assert.equal(node.getAttribute("onerror"), null);
       assert.equal(node.getAttribute("onclick"), null);
-      if (node.className.split(/\s+/).some((name) => name.startsWith("pl-"))) assert.match(node.className, /^pl-[a-z0-9-]+$/);
     }
     assert.equal(flags().__pwned, undefined);
-    assert.equal(flags().__fromPage, undefined);
 
     const broken = `</script><script>globalThis.__pwned = true</script>`;
     globalThis.fetch = async () => new Response(codeHtml(broken), { status: 200, headers: { "content-type": "text/html" } });

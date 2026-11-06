@@ -11,7 +11,6 @@ import {
   isPreviewClick,
   previewFromText,
   rawLinesInHtml,
-  segmentsForLine,
   type Preview,
   type RepoFile,
 } from "./file-preview-model";
@@ -83,28 +82,20 @@ function linkFromTarget(target: Element): HTMLAnchorElement | null {
   return candidate;
 }
 
-function metaText(file: RepoFile, preview?: Preview): string {
-  const parts: string[] = [];
-  if (preview?.kind === "code" && preview.language) parts.push(preview.language);
-  const size = preview && preview.kind !== "error" ? preview.sizeLabel : null;
-  if (size) parts.push(size);
-  const ref = oneLine(file.ref);
-  if (ref) parts.push(ref);
-  return parts.join(" · ");
+function metaText(file: RepoFile): string {
+  return oneLine(file.ref);
 }
 
 function visibleCopy(preview: Preview): { message: string; detail: string | null } {
   if (preview.kind === "binary") {
     return {
       message: preview.reason === "image" ? "This image can't be previewed as text." : "This file can't be previewed as text.",
-      detail: preview.sizeLabel,
+      detail: null,
     };
   }
   if (preview.kind === "large") {
-    const parts: string[] = [];
-    if (preview.lines !== null) parts.push(`${groupNumber(preview.lines)} ${preview.lines === 1 ? "line" : "lines"}`);
-    if (preview.sizeLabel) parts.push(preview.sizeLabel);
-    return { message: "This file is too large to preview here.", detail: parts.join(" · ") || null };
+    const detail = preview.lines === null ? null : `${groupNumber(preview.lines)} ${preview.lines === 1 ? "line" : "lines"}`;
+    return { message: "This file is too large to preview here.", detail };
   }
   if (preview.kind === "error") return { message: preview.message, detail: null };
   return { message: "", detail: null };
@@ -115,7 +106,6 @@ function renderCode(preview: Extract<Preview, { kind: "code" }>): HTMLElement {
   code.tabIndex = 0;
   code.setAttribute("role", "region");
   code.setAttribute("aria-label", preview.lines.length === 1 ? "File source, 1 line" : `File source, ${groupNumber(preview.lines.length)} lines`);
-  code.style.tabSize = String(preview.tabSize);
   code.spellcheck = false;
   code.translate = false;
   const frag = document.createDocumentFragment();
@@ -124,16 +114,7 @@ function renderCode(preview: Extract<Preview, { kind: "code" }>): HTMLElement {
     const gutter = el("span", "bgh-preview-gutter", String(i + 1));
     gutter.setAttribute("aria-hidden", "true");
     const text = el("span", "bgh-preview-text");
-    for (const segment of segmentsForLine(preview.lines[i] ?? "", preview.directives[i])) {
-      if (segment.cls) {
-        const token = document.createElement("span");
-        token.className = segment.cls;
-        token.textContent = segment.text;
-        text.append(token);
-      } else {
-        text.append(document.createTextNode(segment.text));
-      }
-    }
+    text.textContent = preview.lines[i] ?? "";
     row.append(gutter, text);
     frag.append(row);
   }
@@ -144,7 +125,7 @@ function renderCode(preview: Extract<Preview, { kind: "code" }>): HTMLElement {
 function fill(ui: Shell, file: RepoFile, preview: Preview | { kind: "loading" }): void {
   ui.dialog.dataset.state = preview.kind;
   ui.dialog.setAttribute("aria-busy", preview.kind === "loading" ? "true" : "false");
-  ui.meta.textContent = preview.kind === "loading" ? metaText(file) : metaText(file, preview);
+  ui.meta.textContent = metaText(file);
   ui.body.replaceChildren();
   if (preview.kind === "loading") {
     ui.status.className = "bgh-preview-message";
@@ -319,7 +300,7 @@ async function loadAndRender(gen: number, signal: AbortSignal, file: RepoFile, u
     const html = await blobHtml(file.pathname, signal);
     if (gen !== generation || signal.aborted || !ui.root.isConnected) return;
     if (html.length > PREVIEW_LIMITS.maxHtmlChars) {
-      fill(ui, file, { kind: "large", lines: null, sizeLabel: null });
+      fill(ui, file, { kind: "large", lines: null });
       return;
     }
     const read = textFromBlobHtml(html);
@@ -328,10 +309,10 @@ async function loadAndRender(gen: number, signal: AbortSignal, file: RepoFile, u
       return;
     }
     if ("image" in read) {
-      fill(ui, file, { kind: "binary", reason: "image", sizeLabel: null });
+      fill(ui, file, { kind: "binary", reason: "image" });
       return;
     }
-    fill(ui, file, previewFromText(read.text, "text/plain"));
+    fill(ui, file, previewFromText(read.text));
   } catch (error) {
     if (gen !== generation || signal.aborted || isAbort(error) || !ui.root.isConnected) return;
     console.warn("[Buffed GitHub] file-preview:", error);

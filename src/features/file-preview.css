@@ -1,7 +1,6 @@
 /* In-page file preview. Colors come from GitHub's own variables, so light
-   mode, dark mode, and the black theme all restyle the chrome. Token colors
-   are GitHub's global .pl-* rules (prettylights); this file does not recolor
-   source text, and it never inserts fetched HTML. */
+   mode, dark mode, and the black theme all restyle the chrome. Source is
+   text, and this file never inserts fetched HTML. */
 
 .bgh-preview-backdrop {
   position: fixed;
