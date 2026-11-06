@@ -133,7 +133,11 @@
 }
 
 .bgh-preview-indent {
-  background-image: radial-gradient(circle at center, var(--fgColor-muted, #656d76) 0.9px, transparent 1.05px);
+  background-image: radial-gradient(
+    circle at center,
+    color-mix(in srgb, var(--fgColor-default, #1f2328) 22%, transparent) 0.8px,
+    transparent 1px
+  );
   background-size: 1ch 100%;
   background-repeat: repeat-x;
   background-position: left center;
