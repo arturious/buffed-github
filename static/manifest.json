@@ -13,6 +13,9 @@
   "host_permissions": [
     "https://github.com/*"
   ],
+  "background": {
+    "scripts": ["background.js"]
+  },
   "content_scripts": [
     {
       "matches": [
