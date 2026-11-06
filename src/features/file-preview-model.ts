@@ -21,10 +21,16 @@ export interface RepoFile {
 }
 
 export type Preview =
-  | { kind: "code"; lines: string[] }
+  | { kind: "code"; lines: string[]; directives: unknown[]; tabSize: number }
   | { kind: "binary"; reason: "image" | "binary" }
   | { kind: "large"; lines: number | null }
   | { kind: "error"; message: string };
+
+export interface Segment {
+  text: string;
+  /** A GitHub prettylights class, or null for plain text. */
+  cls: string | null;
+}
 
 export interface PreviewClick {
   button: number;
@@ -80,14 +86,79 @@ export function fileFromHref(href: string, base: string): RepoFile | null {
   }
 }
 
+const TOKEN_CLASS = /^pl-[a-z0-9-]+$/;
+
 /** Split file text into lines. NUL bytes and oversized text are not shown. */
 export function previewFromText(text: string): Preview {
   if (text.includes("\u0000")) return { kind: "binary", reason: "binary" };
   if (text.length > PREVIEW_LIMITS.maxChars) return { kind: "large", lines: null };
   const lines = text.split(/\r\n|\n|\r/);
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return previewFromLines(lines, [], 4);
+}
+
+export function previewFromLines(lines: string[], directives: unknown[], tabSize: number): Preview {
+  if (lines.some((line) => line.includes("\u0000"))) return { kind: "binary", reason: "binary" };
+  let chars = 0;
+  for (const line of lines) {
+    chars += line.length;
+    if (chars > PREVIEW_LIMITS.maxChars) return { kind: "large", lines: lines.length };
+  }
   if (lines.length > PREVIEW_LIMITS.maxLines) return { kind: "large", lines: lines.length };
-  return { kind: "code", lines };
+  const tab = Number.isInteger(tabSize) && tabSize >= 1 && tabSize <= 16 ? tabSize : 4;
+  return { kind: "code", lines, directives: lines.map((_, index) => directives[index] ?? null), tabSize: tab };
+}
+
+/**
+ * Token slices for one line. The innermost GitHub range wins, which is how
+ * overlapping `stylingDirectives` are painted. The pieces concatenate to `line`.
+ */
+export function segmentsForLine(line: string, directives: unknown): Segment[] {
+  const ranges: { start: number; end: number; cls: string; order: number }[] = [];
+  if (Array.isArray(directives)) {
+    directives.forEach((item, order) => {
+      if (!Array.isArray(item) || item.length < 3) return;
+      const start = item[0];
+      const end = item[1];
+      const cls = item[2];
+      if (typeof start !== "number" || typeof end !== "number" || typeof cls !== "string") return;
+      if (!Number.isInteger(start) || !Number.isInteger(end) || !TOKEN_CLASS.test(cls)) return;
+      if (start < 0 || end > line.length || start >= end) return;
+      ranges.push({ start, end, cls, order });
+    });
+  }
+  const clsAt = (index: number): string | null => {
+    let best: { len: number; order: number; cls: string } | null = null;
+    for (const range of ranges) {
+      if (index < range.start || index >= range.end) continue;
+      const len = range.end - range.start;
+      if (!best || len < best.len || (len === best.len && range.order > best.order)) {
+        best = { len, order: range.order, cls: range.cls };
+      }
+    }
+    return best?.cls ?? null;
+  };
+  const out: Segment[] = [];
+  let buffer = "";
+  let current: string | null = null;
+  for (let index = 0; index < line.length; index++) {
+    const cls = clsAt(index);
+    if (index > 0 && cls !== current) {
+      out.push({ text: buffer, cls: current });
+      buffer = "";
+    }
+    current = cls;
+    buffer += line[index] ?? "";
+  }
+  if (buffer.length > 0 || out.length === 0) out.push({ text: buffer, cls: current });
+  return out;
+}
+
+/** How many leading spaces or tabs to mark. The characters themselves stay in the line. */
+export function indentLength(line: string): number {
+  let index = 0;
+  while (index < line.length && (line[index] === " " || line[index] === "\t")) index += 1;
+  return index;
 }
 
 /**
@@ -95,17 +166,16 @@ export function previewFromText(text: string): Preview {
  * hydrates. The textarea itself is not in the fetched HTML. Returns null when
  * the array is absent or not a list of strings.
  */
-export function rawLinesInHtml(html: string): string[] | null {
-  const key = '"rawLines":';
-  const at = html.indexOf(key);
+function jsonArrayAfter(html: string, key: string, from = 0): unknown[] | null {
+  const at = html.indexOf(key, from);
   if (at < 0) return null;
   const start = html.indexOf("[", at + key.length);
   if (start < 0) return null;
   let depth = 0;
   let inString = false;
   let escaped = false;
-  for (let i = start; i < html.length; i++) {
-    const char = html[i];
+  for (let index = start; index < html.length; index++) {
+    const char = html[index];
     if (inString) {
       if (escaped) escaped = false;
       else if (char === "\\") escaped = true;
@@ -118,9 +188,8 @@ export function rawLinesInHtml(html: string): string[] | null {
       depth -= 1;
       if (depth === 0) {
         try {
-          const value = JSON.parse(html.slice(start, i + 1)) as unknown;
-          if (!Array.isArray(value) || value.some((line) => typeof line !== "string")) return null;
-          return value as string[];
+          const value = JSON.parse(html.slice(start, index + 1)) as unknown;
+          return Array.isArray(value) ? value : null;
         } catch {
           return null;
         }
@@ -128,5 +197,26 @@ export function rawLinesInHtml(html: string): string[] | null {
     }
   }
   return null;
+}
+
+export function rawLinesInHtml(html: string): string[] | null {
+  const value = jsonArrayAfter(html, '"rawLines":');
+  if (!value || value.some((line) => typeof line !== "string")) return null;
+  return value as string[];
+}
+
+/** `rawLines`, the parallel `stylingDirectives`, and `tabSize` from one blob page. */
+export function highlightedSource(html: string): { lines: string[]; directives: unknown[]; tabSize: number } | null {
+  const lines = rawLinesInHtml(html);
+  if (!lines) return null;
+  const at = html.indexOf('"rawLines":');
+  const styling = jsonArrayAfter(html, '"stylingDirectives":', at);
+  const tabMatch = html.match(/"tabSize":(\d+)/);
+  const parsed = tabMatch ? Number(tabMatch[1]) : 4;
+  return {
+    lines,
+    directives: lines.map((_, index) => styling?.[index] ?? null),
+    tabSize: Number.isInteger(parsed) && parsed >= 1 && parsed <= 16 ? parsed : 4,
+  };
 }
 

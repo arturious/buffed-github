@@ -1,6 +1,7 @@
-/* In-page file preview. Colors come from GitHub's own variables, so light
-   mode, dark mode, and the black theme all restyle the chrome. Source is
-   text, and this file never inserts fetched HTML. */
+/* In-page file preview. Chrome colors come from GitHub's variables. Token
+   colors are GitHub's own .pl-* rules, already on the page, so light mode,
+   dark mode, and the black theme restyle the source. Fetched HTML is never
+   inserted. Indent dots are a background, not characters. */
 
 .bgh-preview-backdrop {
   position: fixed;
@@ -128,6 +129,14 @@
   color: var(--fgColor-muted, #656d76);
   text-align: right;
   user-select: none;
+  -webkit-user-select: none;
+}
+
+.bgh-preview-indent {
+  background-image: radial-gradient(circle at center, var(--fgColor-muted, #656d76) 0.9px, transparent 1.05px);
+  background-size: 1ch 100%;
+  background-repeat: repeat-x;
+  background-position: left center;
 }
 
 .bgh-preview-text {

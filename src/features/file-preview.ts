@@ -9,8 +9,11 @@ import {
   PREVIEW_LIMITS,
   fileFromHref,
   isPreviewClick,
+  highlightedSource,
+  indentLength,
+  previewFromLines,
   previewFromText,
-  rawLinesInHtml,
+  segmentsForLine,
   type Preview,
   type RepoFile,
 } from "./file-preview-model";
@@ -106,20 +109,80 @@ function renderCode(preview: Extract<Preview, { kind: "code" }>): HTMLElement {
   code.tabIndex = 0;
   code.setAttribute("role", "region");
   code.setAttribute("aria-label", preview.lines.length === 1 ? "File source, 1 line" : `File source, ${groupNumber(preview.lines.length)} lines`);
+  code.style.tabSize = String(preview.tabSize);
   code.spellcheck = false;
   code.translate = false;
   const frag = document.createDocumentFragment();
   for (let i = 0; i < preview.lines.length; i++) {
+    const line = preview.lines[i] ?? "";
     const row = el("span", "bgh-preview-line");
     const gutter = el("span", "bgh-preview-gutter", String(i + 1));
     gutter.setAttribute("aria-hidden", "true");
     const text = el("span", "bgh-preview-text");
-    text.textContent = preview.lines[i] ?? "";
+    appendLine(text, line, preview.directives[i]);
     row.append(gutter, text);
     frag.append(row);
   }
   code.append(frag);
+  code.addEventListener("copy", onCopy);
   return code;
+}
+
+/** Leading spaces and tabs stay in the text. A marker span only paints dots over them. */
+function appendLine(parent: HTMLElement, line: string, directives: unknown): void {
+  const indent = indentLength(line);
+  let remaining = indent;
+  let marker: HTMLElement | null = null;
+  if (indent > 0) {
+    marker = el("span", "bgh-preview-indent");
+    marker.textContent = line.slice(0, indent);
+    parent.append(marker);
+  }
+  for (const segment of segmentsForLine(line, directives)) {
+    let value = segment.text;
+    if (remaining > 0) {
+      const skip = Math.min(remaining, value.length);
+      remaining -= skip;
+      value = value.slice(skip);
+    }
+    if (!value) continue;
+    if (segment.cls) {
+      const token = document.createElement("span");
+      token.className = segment.cls;
+      token.textContent = value;
+      parent.append(token);
+    } else {
+      parent.append(document.createTextNode(value));
+    }
+  }
+}
+
+function onCopy(event: ClipboardEvent): void {
+  const root = event.currentTarget as HTMLElement | null;
+  if (!root || !event.clipboardData) return;
+  const text = exactSelection(root);
+  if (text === null) return;
+  event.preventDefault();
+  event.clipboardData.setData("text/plain", text);
+}
+
+/** Selected source from the line text only, so gutters and dots never join the clipboard. */
+function exactSelection(root: HTMLElement): string | null {
+  const selection = root.ownerDocument.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer) && range.startContainer !== root) return null;
+  const parts: string[] = [];
+  for (const line of root.querySelectorAll<HTMLElement>(".bgh-preview-line")) {
+    const text = line.querySelector<HTMLElement>(".bgh-preview-text");
+    if (!text || !range.intersectsNode(text)) continue;
+    const slice = root.ownerDocument.createRange();
+    slice.selectNodeContents(text);
+    if (text.contains(range.startContainer)) slice.setStart(range.startContainer, range.startOffset);
+    if (text.contains(range.endContainer)) slice.setEnd(range.endContainer, range.endOffset);
+    parts.push(slice.toString());
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
 }
 
 function fill(ui: Shell, file: RepoFile, preview: Preview | { kind: "loading" }): void {
@@ -256,17 +319,17 @@ function isAbort(error: unknown): boolean {
  * created by client script and is not in fetched HTML; `rawLines` is what
  * GitHub copies into it. Code cells are the server-rendered block, kept for
  * pages that have no `rawLines`. */
-function textFromBlobHtml(html: string): { text: string } | { image: true } | null {
+function textFromBlobHtml(html: string): Preview | { image: true } | null {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const area = doc.querySelector<HTMLTextAreaElement>("#read-only-cursor-text-area");
-  if (area && area.value.length > 0) return { text: area.value };
-  const embedded = rawLinesInHtml(html);
-  if (embedded) return { text: embedded.join("\n") };
+  if (area && area.value.length > 0) return previewFromText(area.value);
+  const highlighted = highlightedSource(html);
+  if (highlighted) return previewFromLines(highlighted.lines, highlighted.directives, highlighted.tabSize);
   const root = doc.querySelector('section[aria-labelledby*="file-name-id"]');
   const cells = (root ?? doc).querySelectorAll('[data-testid="code-cell"]');
-  if (cells.length) return { text: Array.from(cells, (cell) => cell.textContent ?? "").join("\n") };
+  if (cells.length) return previewFromText(Array.from(cells, (cell) => cell.textContent ?? "").join("\n"));
   if (root?.querySelector("img, video")) return { image: true };
-  if (area || root) return { text: "" };
+  if (area || root) return previewFromText("");
   return null;
 }
 
@@ -312,7 +375,7 @@ async function loadAndRender(gen: number, signal: AbortSignal, file: RepoFile, u
       fill(ui, file, { kind: "binary", reason: "image" });
       return;
     }
-    fill(ui, file, previewFromText(read.text));
+    fill(ui, file, read);
   } catch (error) {
     if (gen !== generation || signal.aborted || isAbort(error) || !ui.root.isConnected) return;
     console.warn("[Buffed GitHub] file-preview:", error);

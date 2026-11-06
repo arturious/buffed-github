@@ -473,3 +473,49 @@ test("source that looks like markup is text, including a broken script tag in th
     page.restore();
   }
 });
+
+test("syntax colors and indent marks do not change the copied source", async () => {
+  const page = installDom();
+  try {
+    const lines = ["<html>", "\t<head>"];
+    const body = JSON.stringify({
+      tabSize: 4,
+      rawLines: lines,
+      stylingDirectives: [
+        [[0, 1, "pl-kos"], [1, 5, "pl-ent"], [5, 6, "pl-kos"]],
+        [[1, 2, "pl-kos"], [2, 6, "pl-ent"], [6, 7, "pl-kos"], [0, 1, "not-a-class"]],
+      ],
+    });
+    globalThis.fetch = async () => new Response(body, { status: 200, headers: { "content-type": "text/html" } });
+    filePreview.run?.();
+    click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
+    await flush();
+    const texts = Array.from(page.document.querySelectorAll(".bgh-preview-text"), (node) => node.textContent);
+    assert.deepEqual(texts, lines);
+    assert.equal(page.document.querySelector(".bgh-preview-indent")?.textContent, "\t");
+    assert.equal(page.document.querySelector(".pl-ent")?.textContent, "html");
+    assert.equal(page.document.querySelector(".bgh-preview-code")?.textContent?.includes("not-a-class"), false);
+    assert.equal((page.document.body.textContent ?? "").includes("·"), false);
+    const code = page.document.querySelector<HTMLElement>(".bgh-preview-code");
+    assert.ok(code);
+    assert.equal(code.style.tabSize, "4");
+    const range = page.document.createRange();
+    range.selectNodeContents(code);
+    const selection = page.window.getSelection();
+    assert.ok(selection);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    let copied = "";
+    const CopyEvent = (page.window as unknown as { Event: typeof Event }).Event;
+    const event = new CopyEvent("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: { setData(_type: string, value: string) { copied = value; } },
+    });
+    code.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(copied, "<html>\n\t<head>");
+    assert.equal(copied.includes("1"), false);
+  } finally {
+    page.restore();
+  }
+});
