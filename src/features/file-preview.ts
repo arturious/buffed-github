@@ -32,10 +32,16 @@ let shell: Shell | null = null;
 let opener: HTMLElement | null = null;
 let pointerDownOnBackdrop = false;
 
-function pageFetch(path: string, init?: RequestInit): Promise<Response> {
-  // Page fetch, used only if the content-script fetch did not get the blob
-  // document. It sends the user's cookies for a private repo. No extra host.
-  return (globalThis.content?.fetch ?? fetch)(location.origin + path, init);
+interface BlobReply {
+  ok?: boolean;
+  html?: string;
+  status?: number;
+}
+
+function extensionRuntime(): { sendMessage(message: unknown): Promise<unknown> } | null {
+  const runtime = (globalThis as unknown as { browser?: typeof browser }).browser?.runtime;
+  if (!runtime?.sendMessage) return null;
+  return runtime;
 }
 
 function oneLine(value: string): string {
@@ -265,10 +271,6 @@ function isAbort(error: unknown): boolean {
   return (error as { name: unknown }).name === "AbortError";
 }
 
-function looksLikeBlob(html: string): boolean {
-  return html.includes('"rawLines":') || html.includes('data-testid="code-cell"') || html.includes("read-only-cursor-text-area");
-}
-
 /** Text of the file GitHub shows. The live `#read-only-cursor-text-area` is
  * created by client script and is not in fetched HTML; `rawLines` is what
  * GitHub copies into it. Code cells are the server-rendered block, kept for
@@ -288,21 +290,28 @@ function textFromBlobHtml(html: string): { text: string } | { image: true } | nu
 }
 
 async function blobHtml(pathname: string, signal: AbortSignal): Promise<string> {
-  const init: RequestInit = {
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+  const runtime = extensionRuntime();
+  if (runtime) {
+    try {
+      const reply = (await runtime.sendMessage({ type: "buffed-github:file-html", pathname })) as BlobReply;
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (reply?.ok && typeof reply.html === "string") return reply.html;
+      if (typeof reply?.status === "number" && reply.status >= 400) throw new Error(`HTTP ${reply.status}`);
+    } catch (error) {
+      if (isAbort(error) || (error instanceof Error && /^HTTP \d{3}$/.test(error.message))) throw error;
+    }
+  }
+  // Tests, and a background that did not answer. In Zen this fetch is the
+  // page's fetch and GitHub may replace the body, so it is not the main path.
+  const res = await fetch(location.origin + pathname, {
     credentials: "include",
     signal,
     cache: "no-store",
     headers: { Accept: "text/html" },
-  };
-  // Content-script fetch, not the page's fetch: GitHub's client router answers
-  // the page fetch with a payload that has no file text.
-  const direct = await fetch(location.origin + pathname, init);
-  if (!direct.ok) throw new Error(`HTTP ${direct.status}`);
-  const html = await direct.text();
-  if (looksLikeBlob(html) || !globalThis.content?.fetch) return html;
-  const viaPage = await pageFetch(pathname, init);
-  if (!viaPage.ok) return html;
-  return viaPage.text();
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
 }
 
 async function loadAndRender(gen: number, signal: AbortSignal, file: RepoFile, ui: Shell): Promise<void> {
