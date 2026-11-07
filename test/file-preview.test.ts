@@ -57,10 +57,12 @@ function installDom(body = TABLE, url = BASE) {
     location: globalThis.location,
     fetch: globalThis.fetch,
     DOMParser: globalThis.DOMParser,
+    MutationObserver: globalThis.MutationObserver,
   };
   globalThis.document = dom.window.document;
   globalThis.location = dom.window.location;
   globalThis.DOMParser = (dom.window as unknown as { DOMParser: typeof DOMParser }).DOMParser;
+  globalThis.MutationObserver = (dom.window as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver;
   return {
     window: dom.window,
     document: dom.window.document,
@@ -70,6 +72,7 @@ function installDom(body = TABLE, url = BASE) {
       globalThis.location = previous.location;
       globalThis.fetch = previous.fetch;
       globalThis.DOMParser = previous.DOMParser;
+      globalThis.MutationObserver = previous.MutationObserver;
       dom.window.close();
     },
   };
@@ -133,7 +136,7 @@ test("file links are blob paths on this origin", () => {
 test("quick file preview is its own switch and does not replace the other features", () => {
   assert.deepEqual(
     features.map((feature) => feature.id),
-    ["inline-folders", "file-preview", "black-theme"],
+    ["inline-folders", "file-preview", "black-theme", "github-corner"],
   );
   const folders = features.find((feature) => feature.id === "inline-folders");
   const preview = features.find((feature) => feature.id === "file-preview");

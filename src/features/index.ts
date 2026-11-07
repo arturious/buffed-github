@@ -3,6 +3,7 @@
 import type { Feature } from "../feature";
 import blackTheme from "./black-theme";
 import filePreview from "./file-preview";
+import githubCorner from "./github-corner";
 import inlineFolders from "./inline-folders";
 
-export const features: Feature[] = [inlineFolders, filePreview, blackTheme];
+export const features: Feature[] = [inlineFolders, filePreview, blackTheme, githubCorner];

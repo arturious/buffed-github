@@ -9,6 +9,7 @@ Buffs for GitHub: small improvements to its interface.
 | Inline folders | Click a folder in a repo's file table to expand it in place, with a chevron, last commit and date for each item.<br><br><img src="media/inline-folders.gif" alt="Expanding folders in place in a repo's file table" width="640"> |
 | Quick file preview | Click a file in that table — including a file inside a folder expanded in place — to read it in a dialog on the same page. |
 | Black theme | Pure black backgrounds and flatter borders in GitHub's dark mode. Light mode is left alone. |
+| GitHub corner | The octocat corner in the top left in place of the header's menu button and logo. It links home and waves on hover. |
 
 Each feature can be switched off on its own in the extension's settings.
 

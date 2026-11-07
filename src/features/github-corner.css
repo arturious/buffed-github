@@ -1,0 +1,99 @@
+/* Octocat corner from arx, same colors, in the top left. The menu button and
+   logo are gone and the left slot is just wide enough for the corner, so the
+   breadcrumbs sit right after it. */
+
+[data-testid="top-nav-left"] > :has(svg.octicon-mark-github, svg.octicon-three-bars) {
+  display: none !important;
+}
+
+[data-testid="top-nav-left"] {
+  min-width: 64px;
+  padding-inline: 0 !important;
+}
+
+/* No line under the header: GitHub draws it as an inset shadow. */
+[class*="appHeader__"] {
+  box-shadow: none !important;
+}
+
+/* Older header without the slots: keep the space, hide the buttons. */
+.AppHeader :is(a, button):has(svg.octicon-mark-github, svg.octicon-three-bars) {
+  visibility: hidden !important;
+}
+
+.bgh-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 110;
+  display: block;
+  color: #ffffff;
+}
+
+/* A bit smaller than arx's 80px (70px on narrow screens). Fixed hard, since page and extension styles for links and
+   icons were shrinking it. */
+.bgh-corner,
+.bgh-corner > svg {
+  box-sizing: content-box !important;
+  width: 72px !important;
+  height: 72px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  zoom: 1 !important;
+  transform: none !important;
+}
+
+.bgh-corner > svg {
+  display: block !important;
+  overflow: visible !important;
+}
+
+.bgh-corner-band {
+  fill: #24292f;
+}
+
+.bgh-corner-arm,
+.bgh-corner-body {
+  fill: currentColor;
+  transform-origin: 130px 106px;
+}
+
+.bgh-corner:hover .bgh-corner-arm,
+.bgh-corner:focus-visible .bgh-corner-arm {
+  animation: bgh-octocat-wave 560ms ease-in-out;
+}
+
+.bgh-corner:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #0969da);
+  outline-offset: -8px;
+}
+
+@keyframes bgh-octocat-wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  20%,
+  60% {
+    transform: rotate(-22deg);
+  }
+
+  40%,
+  80% {
+    transform: rotate(12deg);
+  }
+}
+
+@media (max-width: 560px) {
+  .bgh-corner,
+  .bgh-corner > svg {
+    width: 63px !important;
+    height: 63px !important;
+  }
+}
