@@ -47,7 +47,7 @@ const BLOB_PATH = /^\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
 export function isPreviewClick(event: PreviewClick): boolean {
   return (
     event.button === 0 &&
-    event.altKey &&
+    !event.altKey &&
     !event.metaKey &&
     !event.ctrlKey &&
     !event.shiftKey &&

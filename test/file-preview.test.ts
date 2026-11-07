@@ -104,11 +104,11 @@ function flags(): { __pwned?: boolean } {
   return globalThis as { __pwned?: boolean };
 }
 
-test("preview click is Option or Alt plus the primary button, and nothing else", () => {
-  const base = { button: 0, altKey: true, metaKey: false, ctrlKey: false, shiftKey: false, detail: 1 };
+test("preview click is a plain primary click, and nothing else", () => {
+  const base = { button: 0, altKey: false, metaKey: false, ctrlKey: false, shiftKey: false, detail: 1 };
   assert.equal(isPreviewClick(base), true);
   assert.equal(isPreviewClick({ ...base, detail: 2 }), true);
-  assert.equal(isPreviewClick({ ...base, altKey: false }), false);
+  assert.equal(isPreviewClick({ ...base, altKey: true }), false);
   assert.equal(isPreviewClick({ ...base, detail: 0 }), false);
   assert.equal(isPreviewClick({ ...base, button: 1 }), false);
   assert.equal(isPreviewClick({ ...base, metaKey: true }), false);
@@ -141,7 +141,7 @@ test("quick file preview is its own switch and does not replace the other featur
   assert.equal(folders?.name, "Inline folders");
   assert.match(folders?.description ?? "", /file table/);
   assert.equal(preview?.name, "Quick file preview");
-  assert.match(preview?.description ?? "", /Option-click/);
+  assert.match(preview?.description ?? "", /Click a file/);
   assert.match(preview?.css ?? "", /position:\s*fixed/);
   assert.match(preview?.css ?? "", /overflow:\s*auto/);
   assert.match(preview?.css ?? "", /--bgColor-default/);
@@ -153,12 +153,12 @@ test("quick file preview is its own switch and does not replace the other featur
   assert.equal(typeof preview?.run, "function");
 });
 
-test("Option-click previews a file as text and leaves other clicks alone", async () => {
+test("a click previews a file as text and leaves other clicks alone", async () => {
   const page = installDom();
   try {
     const seen: { url: string; init?: RequestInit }[] = [];
     globalThis.fetch = async (input, init) => {
-      seen.push({ url: String(input), init });
+      if (String(input).includes("/blob/")) seen.push({ url: String(input), init });
       return new Response(codeHtml("const a = 1;"), { status: 200, headers: { "content-type": "text/html" } });
     };
     for (const feature of features) feature.run?.();
@@ -168,31 +168,28 @@ test("Option-click previews a file as text and leaves other clicks alone", async
       reached = true;
     });
 
-    const plain = click(page.window, link);
-    assert.equal(plain.defaultPrevented, false);
-    assert.equal(reached, true);
-    assert.equal(dialog(), null);
-    // jsdom follows the link on a timer. A plain click still asks to navigate.
-    await flush();
-    assert.equal(page.navigations.length, 1);
-
-    reached = false;
-    for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true, ctrlKey: true }, { button: 1 }, { altKey: true, detail: 0 }]) {
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }, { detail: 0 }]) {
       const event = click(page.window, link, init);
       assert.equal(event.defaultPrevented, false, JSON.stringify(init));
     }
+    assert.equal(reached, true);
     assert.equal(dialog(), null);
-    const folder = click(page.window, page.document.querySelector("#dir-row a")!, { altKey: true });
-    assert.equal(folder.defaultPrevented, false);
-    assert.equal(page.document.querySelector("#dir-row")?.getAttribute("data-inline-expanded") ?? null, null);
-    const commit = click(page.window, page.document.querySelector("#commit")!, { altKey: true });
+    // Folder links belong to inline folders, never to the preview.
+    click(page.window, page.document.querySelector("#dir-row a")!);
+    assert.equal(dialog(), null);
+    const commit = click(page.window, page.document.querySelector("#commit")!);
     assert.equal(commit.defaultPrevented, false);
 
     await flush();
     reached = false;
     const navigated = page.navigations.length;
-    const gutter = click(page.window, page.document.querySelector("#file-row td")!, { altKey: true });
-    assert.equal(gutter.defaultPrevented, true);
+    // Empty space in the row is not the file.
+    const cell = click(page.window, page.document.querySelector("#file-row td")!);
+    assert.equal(cell.defaultPrevented, false);
+    assert.equal(dialog(), null);
+
+    const file = click(page.window, link);
+    assert.equal(file.defaultPrevented, true);
     assert.equal(reached, false);
     await flush();
     assert.equal(page.navigations.length, navigated);
@@ -204,14 +201,15 @@ test("Option-click previews a file as text and leaves other clicks alone", async
     assert.equal(box.getAttribute("role"), "dialog");
     assert.equal(box.getAttribute("aria-modal"), "true");
     assert.equal(page.document.querySelector(".bgh-preview-title")?.textContent, "app.ts");
+    assert.equal(page.document.querySelector(".bgh-preview-dir")?.textContent, "src/");
     assert.equal(page.document.querySelector(".bgh-preview-path")?.textContent, "src/app.ts");
-    assert.match(page.document.querySelector(".bgh-preview-meta")?.textContent ?? "", /main/);
+    assert.equal(page.document.querySelector(".bgh-preview-meta"), null);
     assert.equal(page.document.querySelector(".bgh-preview-text span"), null);
     assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, "const a = 1;");
     assert.equal(box.querySelector("script, img"), null);
     assert.equal(flags().__pwned, undefined);
     assert.equal(seen.length, 1);
-    assert.equal(seen[0]?.url, `${BASE}/blob/main/src/app.ts`);
+    assert.equal(seen[0]?.url, `${BASE}/blob/main/src/app.ts?plain=1`);
     assert.equal(seen[0]?.init?.credentials, "include");
     assert.match(new Headers(seen[0]?.init?.headers).get("accept") ?? "", /text\/html/);
     assert.equal(page.window.location.pathname, "/acme/widgets");
@@ -256,7 +254,7 @@ test("preview keeps expanded folders and does not move the page", async () => {
     const expanded = page.document.querySelector("#dir-row")?.getAttribute("data-inline-expanded");
     assert.ok(expanded);
 
-    click(page.window, child, { altKey: true });
+    click(page.window, child);
     await flush();
     assert.equal(dialog()?.dataset.state, "code");
     assert.match(page.document.querySelector(".bgh-preview-text")?.textContent ?? "", /export const n = 1;/);
@@ -284,16 +282,35 @@ test("rows inserted later and links without Link--primary can be previewed", asy
     row.className = "inline-folder-row";
     row.innerHTML = `<td class="react-directory-filename-column"><a class="Link--primary" href="/acme/widgets/blob/main/src/late.ts">late.ts</a></td>`;
     page.document.querySelector("tbody")?.append(row);
-    click(page.window, row.querySelector("a")!, { altKey: true });
+    click(page.window, row.querySelector("a")!);
     await flush();
     assert.equal(page.document.querySelector(".bgh-preview-title")?.textContent, "late.ts");
     page.document.querySelector<HTMLButtonElement>(".bgh-preview-close")?.click();
     assert.equal(dialog(), null);
 
-    click(page.window, page.document.querySelector("#readme-row a")!, { altKey: true });
+    click(page.window, page.document.querySelector("#readme-row a")!);
     await flush();
     assert.equal(page.document.querySelector(".bgh-preview-title")?.textContent, "README.md");
     assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, "# readme");
+  } finally {
+    page.restore();
+  }
+});
+
+test("Enter opens the previewed file", async () => {
+  const page = installDom();
+  try {
+    globalThis.fetch = async () => new Response(codeHtml("const a = 1;"), { status: 200 });
+    filePreview.run?.();
+    click(page.window, page.document.querySelector("#file-row a")!);
+    await flush();
+    assert.ok(dialog());
+    const before = page.navigations.length;
+    const enter = new page.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    page.document.documentElement.dispatchEvent(enter);
+    assert.equal(enter.defaultPrevented, true);
+    assert.equal(dialog(), null);
+    assert.equal(page.navigations.length, before + 1);
   } finally {
     page.restore();
   }
@@ -306,7 +323,7 @@ test("Close, Escape, and a click outside dismiss the dialog and return focus", a
     filePreview.run?.();
     const link = page.document.querySelector<HTMLAnchorElement>("#file-row a")!;
     link.focus();
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     const box = dialog();
     assert.ok(box);
@@ -324,7 +341,7 @@ test("Close, Escape, and a click outside dismiss the dialog and return focus", a
     const tab = new page.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
     page.document.documentElement.dispatchEvent(tab);
     assert.equal(tab.defaultPrevented, true);
-    assert.equal(page.document.activeElement, page.document.querySelector(".bgh-preview-open"));
+    assert.equal(page.document.activeElement, page.document.querySelector(".bgh-preview-close"));
     const back = new page.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true, shiftKey: true });
     page.document.documentElement.dispatchEvent(back);
     assert.equal(back.defaultPrevented, true);
@@ -334,21 +351,21 @@ test("Close, Escape, and a click outside dismiss the dialog and return focus", a
     assert.equal(dialog(), null);
     assert.equal(page.document.activeElement, link);
 
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     backdrop.dispatchEvent(new page.window.MouseEvent("mousedown", { bubbles: true }));
     backdrop.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
     assert.equal(dialog(), null);
     assert.equal(page.document.activeElement, link);
 
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     page.document.querySelector<HTMLButtonElement>(".bgh-preview-close")?.click();
     assert.equal(dialog(), null);
     assert.equal(page.document.activeElement, link);
     const wheel = new page.window.WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 40 });
     // The backdrop is gone; open again and wheel the dimmed area.
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     page.document.querySelector(".bgh-preview-backdrop")?.dispatchEvent(wheel);
     assert.equal(wheel.defaultPrevented, true);
@@ -369,7 +386,7 @@ test("loading, errors, empty, binary, and large files have their own states", as
     });
     filePreview.run?.();
     const link = page.document.querySelector<HTMLAnchorElement>("#file-row a")!;
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     assert.equal(dialog()?.dataset.state, "loading");
     assert.match(page.document.body.textContent ?? "", /Loading preview…/);
     assert.equal(page.document.querySelector(".bgh-preview-code"), null);
@@ -384,17 +401,17 @@ test("loading, errors, empty, binary, and large files have their own states", as
 
     const pending = new Map<string, (response: Response) => void>();
     globalThis.fetch = (input) => new Promise<Response>((resolve) => pending.set(String(input), resolve));
-    click(page.window, link, { altKey: true });
-    click(page.window, page.document.querySelector("#other-file a")!, { altKey: true });
+    click(page.window, link);
+    click(page.window, page.document.querySelector("#other-file a")!);
     assert.equal(page.document.querySelector(".bgh-preview-title")?.textContent, "util.ts");
-    pending.get(`${BASE}/blob/main/src/app.ts`)?.(new Response(codeHtml("FIRST_SECRET"), { status: 200 }));
-    pending.get(`${BASE}/blob/main/src/util.ts`)?.(new Response(codeHtml("second file"), { status: 200 }));
+    pending.get(`${BASE}/blob/main/src/app.ts?plain=1`)?.(new Response(codeHtml("FIRST_SECRET"), { status: 200 }));
+    pending.get(`${BASE}/blob/main/src/util.ts?plain=1`)?.(new Response(codeHtml("second file"), { status: 200 }));
     await flush();
     assert.equal((page.document.body.textContent ?? "").includes("FIRST_SECRET"), false);
     assert.match(page.document.querySelector(".bgh-preview-text")?.textContent ?? "", /second file/);
 
     globalThis.fetch = async () => new Response("nope", { status: 502 });
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     assert.equal(dialog()?.dataset.state, "error");
     assert.match(page.document.querySelector(".bgh-preview-message")?.textContent ?? "", /HTTP 502/);
@@ -402,27 +419,27 @@ test("loading, errors, empty, binary, and large files have their own states", as
     globalThis.fetch = async () => {
       throw new Error("offline");
     };
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     assert.equal(dialog()?.dataset.state, "error");
     assert.match(page.document.querySelector(".bgh-preview-message")?.textContent ?? "", /Couldn't load a preview/);
     assert.equal((page.document.querySelector(".bgh-preview-message")?.textContent ?? "").includes("offline"), false);
 
     globalThis.fetch = async () => new Response(`<section aria-labelledby="file-name-id"></section>`, { status: 200, headers: { "content-type": "text/html" } });
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     assert.equal(dialog()?.dataset.state, "code");
     assert.match(page.document.body.textContent ?? "", /This file is empty/);
 
     globalThis.fetch = async () => new Response(`<section aria-labelledby="file-name-id"><img alt="" src="/pic.png"></section>`, { status: 200, headers: { "content-type": "text/html" } });
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     assert.equal(dialog()?.dataset.state, "binary");
     assert.match(page.document.body.textContent ?? "", /image can't be previewed/);
     assert.equal((page.document.body.textContent ?? "").includes("PNGDATA"), false);
 
     globalThis.fetch = async () => new Response(codeHtml("x".repeat(PREVIEW_LIMITS.maxChars + 1)), { status: 200, headers: { "content-type": "text/html" } });
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     assert.equal(dialog()?.dataset.state, "large");
     assert.match(page.document.body.textContent ?? "", /too large to preview/);
@@ -430,7 +447,7 @@ test("loading, errors, empty, binary, and large files have their own states", as
     assert.equal(page.document.querySelector<HTMLAnchorElement>(".bgh-preview-open")?.href, link.href);
     const partial = `<section aria-labelledby="file-name-id"><div data-testid="code-cell">only</div></section>{"rawLines":["one","two","three"]}`;
     globalThis.fetch = async () => new Response(partial, { status: 200, headers: { "content-type": "text/html" } });
-    click(page.window, link, { altKey: true });
+    click(page.window, link);
     await flush();
     assert.deepEqual(
       Array.from(page.document.querySelectorAll(".bgh-preview-text"), (node) => node.textContent),
@@ -449,7 +466,7 @@ test("source that looks like markup is text, including a broken script tag in th
     const attack = '<script>globalThis.__pwned = true</script><img src=x onerror="globalThis.__pwned = true">';
     globalThis.fetch = async () => new Response(codeHtml(attack), { status: 200, headers: { "content-type": "text/html" } });
     filePreview.run?.();
-    click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
+    click(page.window, page.document.querySelector("#file-row a")!);
     await flush();
     const box = dialog();
     assert.ok(box);
@@ -463,7 +480,7 @@ test("source that looks like markup is text, including a broken script tag in th
 
     const broken = `</script><script>globalThis.__pwned = true</script>`;
     globalThis.fetch = async () => new Response(codeHtml(broken), { status: 200, headers: { "content-type": "text/html" } });
-    click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
+    click(page.window, page.document.querySelector("#file-row a")!);
     await flush();
     assert.equal(dialog()?.dataset.state, "code");
     assert.equal(page.document.querySelector(".bgh-preview-text")?.textContent, broken);
@@ -486,7 +503,7 @@ test("syntax colors and indent marks do not change the copied source", async () 
     </section>{"tabSize":4,"rawLines":["wrong"],"stylingDirectives":[[[0,5,"pl-k"]]]}`;
     globalThis.fetch = async () => new Response(body, { status: 200, headers: { "content-type": "text/html" } });
     filePreview.run?.();
-    click(page.window, page.document.querySelector("#file-row a")!, { altKey: true });
+    click(page.window, page.document.querySelector("#file-row a")!);
     await flush();
     const texts = Array.from(page.document.querySelectorAll(".bgh-preview-text"), (node) => node.textContent);
     assert.deepEqual(texts, lines);
