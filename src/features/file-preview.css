@@ -21,7 +21,7 @@
   width: min(960px, 100%);
   max-height: min(80vh, 900px);
   overflow: hidden;
-  border: 1px solid var(--borderColor-default, #d0d7de);
+  border: 0.5px solid color-mix(in srgb, var(--borderColor-default, #d0d7de) 55%, transparent);
   border-radius: 12px;
   background: var(--bgColor-default, #ffffff);
   color: var(--fgColor-default, #1f2328);
@@ -30,37 +30,28 @@
 
 .bgh-preview-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-start;
   gap: 16px;
-  padding: 12px 12px 12px 16px;
-  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
+  padding: 10px 12px 10px 16px;
+  border-bottom: 0.5px solid color-mix(in srgb, var(--borderColor-default, #d0d7de) 55%, transparent);
 }
 
-.bgh-preview-heading {
+.bgh-preview-path {
   min-width: 0;
+  margin: 0;
+  color: var(--fgColor-muted, #656d76);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bgh-preview-title {
-  margin: 0;
-  font-size: 14px;
+  color: var(--fgColor-default, #1f2328);
   font-weight: 600;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bgh-preview-path,
-.bgh-preview-meta {
-  margin: 2px 0 0;
-  color: var(--fgColor-muted, #656d76);
-  font-size: 12px;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: min(640px, 62vw);
 }
 
 .bgh-preview-actions {

@@ -11,7 +11,8 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: false, status: 0 });
     return;
   }
-  fetch(`https://github.com${pathname}`, {
+  // `plain=1` asks for source even where GitHub would render the file (Markdown).
+  fetch(`https://github.com${pathname}?plain=1`, {
     credentials: "include",
     cache: "no-store",
     headers: { Accept: "text/html" },

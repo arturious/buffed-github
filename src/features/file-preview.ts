@@ -1,5 +1,5 @@
-// Option-click (Alt-click) a file in a repo's file table to preview it in a
-// dialog instead of navigating. Folders expanded in place stay expanded, and
+// Click a file in a repo's file table to preview it in a dialog instead of
+// navigating. Enter opens the file, Escape closes the dialog. Folders expanded in place stay expanded, and
 // the page is not scrolled. The file text is read from the same-origin blob
 // page and drawn as text nodes. Fetched HTML is parsed, never inserted, and
 // its scripts are not run.
@@ -26,8 +26,8 @@ interface Shell {
   root: HTMLElement;
   dialog: HTMLElement;
   body: HTMLElement;
-  meta: HTMLElement;
   status: HTMLElement;
+  href: string;
 }
 
 let generation = 0;
@@ -74,21 +74,12 @@ function focusable(dialog: HTMLElement): HTMLElement[] {
   return [...nodes].filter((node) => !node.hasAttribute("disabled") && node.closest("[hidden]") === null);
 }
 
+/** Only a click on the file link itself. The rest of the row is left alone. */
 function linkFromTarget(target: Element): HTMLAnchorElement | null {
   if (!target.closest(TABLE)) return null;
-  const direct = target.closest("a[href]");
-  if (direct) {
-    const link = direct as HTMLAnchorElement;
-    return fileFromHref(link.href, location.href) ? link : null;
-  }
-  const column = target.closest(".react-directory-filename-column");
-  const candidate = column?.querySelector("a[href]") as HTMLAnchorElement | null;
-  if (!candidate || !fileFromHref(candidate.href, location.href)) return null;
-  return candidate;
-}
-
-function metaText(file: RepoFile): string {
-  return oneLine(file.ref);
+  const link = target.closest<HTMLAnchorElement>("a[href]");
+  if (!link || !fileFromHref(link.href, location.href)) return null;
+  return link;
 }
 
 function visibleCopy(preview: Preview): { message: string; detail: string | null } {
@@ -236,7 +227,6 @@ function exactSelection(root: HTMLElement): string | null {
 function fill(ui: Shell, file: RepoFile, preview: Preview | { kind: "loading" }): void {
   ui.dialog.dataset.state = preview.kind;
   ui.dialog.setAttribute("aria-busy", preview.kind === "loading" ? "true" : "false");
-  ui.meta.textContent = metaText(file);
   ui.body.replaceChildren();
   if (preview.kind === "loading") {
     ui.status.className = "bgh-preview-message";
@@ -298,13 +288,15 @@ function mount(file: RepoFile, link: HTMLAnchorElement): Shell {
   dialog.tabIndex = -1;
 
   const header = el("div", "bgh-preview-header");
-  const heading = el("div", "bgh-preview-heading");
-  const title = el("h2", "bgh-preview-title", oneLine(baseName(file.path)) || "File");
-  title.id = "bgh-file-preview-title";
-  const path = el("p", "bgh-preview-path", oneLine(file.path));
-  path.title = file.path;
-  const meta = el("p", "bgh-preview-meta");
-  heading.append(title, path, meta);
+  // The path, with the file name brighter than its folders.
+  const heading = el("h2", "bgh-preview-path");
+  heading.id = "bgh-file-preview-title";
+  heading.title = file.path;
+  const name = oneLine(baseName(file.path)) || "File";
+  const full = oneLine(file.path);
+  const dir = full.endsWith(name) ? full.slice(0, full.length - name.length) : "";
+  if (dir) heading.append(el("span", "bgh-preview-dir", dir));
+  heading.append(el("span", "bgh-preview-title", name));
 
   const actions = el("div", "bgh-preview-actions");
   const open = el("a", "bgh-preview-open", "Open");
@@ -314,8 +306,8 @@ function mount(file: RepoFile, link: HTMLAnchorElement): Shell {
   close.type = "button";
   close.setAttribute("aria-label", "Close preview");
   close.addEventListener("click", () => closePreview(true));
-  actions.append(open, close);
-  header.append(heading, actions);
+  actions.append(close, open);
+  header.append(actions, heading);
 
   const body = el("div", "bgh-preview-body");
   const status = el("p", "bgh-preview-message");
@@ -332,7 +324,7 @@ function mount(file: RepoFile, link: HTMLAnchorElement): Shell {
   root.addEventListener("wheel", onWheel, { passive: false });
 
   (document.body ?? document.documentElement).append(root);
-  const ui = { root, dialog, body, meta, status };
+  const ui = { root, dialog, body, status, href: link.href };
   shell = ui;
   dialog.focus({ preventScroll: true });
   return ui;
@@ -404,7 +396,7 @@ async function blobHtml(pathname: string, signal: AbortSignal): Promise<string> 
   }
   // Tests, and a background that did not answer. In Zen this fetch is the
   // page's fetch and GitHub may replace the body, so it is not the main path.
-  const res = await fetch(location.origin + pathname, {
+  const res = await fetch(`${location.origin}${pathname}?plain=1`, {
     credentials: "include",
     signal,
     cache: "no-store",
@@ -459,6 +451,17 @@ function onKeydown(event: KeyboardEvent): void {
     closePreview(true);
     return;
   }
+  // Enter opens the file, unless a button or link in the dialog has focus.
+  if (event.key === "Enter" && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    const active = document.activeElement;
+    if (active && active !== dialog && active.closest("a[href], button")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const href = shell.href;
+    closePreview(false);
+    location.assign(href);
+    return;
+  }
   if (event.key !== "Tab") return;
   const items = focusable(dialog);
   const first = items[0];
@@ -496,7 +499,7 @@ function onClick(event: MouseEvent): void {
 const feature: Feature = {
   id: "file-preview",
   name: "Quick file preview",
-  description: "Option-click a file in the file table to preview it without leaving the page.",
+  description: "Click a file in the file table to preview it without leaving the page.",
   css,
   run() {
     document.removeEventListener("click", onClick, true);
